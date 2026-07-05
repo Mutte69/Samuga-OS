@@ -175,8 +175,25 @@ export function LiveProvider({ children }: { children: ReactNode }) {
 
     connect();
 
+    // When the browser comes back online, skip the backoff and reconnect immediately
+    function handleOnline() {
+      if (destroyed) return;
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      // Only reconnect if we don't already have an open connection
+      if (!esRef.current || esRef.current.readyState === EventSource.CLOSED) {
+        retryMsRef.current = INITIAL_RETRY_MS;
+        connect();
+      }
+    }
+
+    window.addEventListener("online", handleOnline);
+
     return () => {
       destroyed = true;
+      window.removeEventListener("online", handleOnline);
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
       esRef.current?.close();
