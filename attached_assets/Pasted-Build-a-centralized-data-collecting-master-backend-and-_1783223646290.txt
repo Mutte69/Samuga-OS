@@ -1,0 +1,29 @@
+Build a centralized, data-collecting master backend and admin control system named "Samuga AI". This application will act as the core data warehouse, AI engine, and orchestration hub for an ecosystem of existing external applications (including Python-based news/travel bots and HTML frontends/miniapps). 
+
+Please use Node.js with Express (or Python with FastAPI) and integrate a PostgreSQL database.
+
+### Core Features to Build:
+
+1. **Central Data Ingestion API:**
+   - Create secure, authenticated REST API endpoints (e.g., `/api/v1/telemetry`, `/api/v1/logs`) protected by API keys. 
+   - These endpoints must accept incoming data streams, logs, user interactions, and event payloads sent from external Python bots and HTML frontends.
+
+2. **Database Schema (PostgreSQL):**
+   - **system_logs:** Columns for id, source_repo (e.g., samuga-news-bot, Samuga-Travels), log_level, message, and timestamp.
+   - **user_analytics:** Columns for id, platform, user_identifier, action_performed, data_payload (JSONB), and timestamp.
+   - **system_configs:** Key-value pairs allowing the admin to dynamically toggle features or update environment variables for the external repos.
+
+3. **AI Integration Engine ("Samuga AI"):**
+   - Create a module that hooks into an LLM (like OpenAI or Google Gemini).
+   - Build a route `/api/v1/ai/analyze` that processes incoming text chunks (like raw news scrapes or customer queries from the travel bots) and outputs structured data, summaries, or automated smart replies.
+
+4. **Master Admin Control Dashboard (UI):**
+   - **Main Overview:** Live charts showing data influx rates, system health statuses of the connected repos, and total logs collected.
+   - **Logs & Data Explorer:** A searchable, filterable table displaying the aggregated data from all repositories in real time.
+   - **Remote Control Panel:** A configuration interface where toggling a switch or changing a text field fires an outgoing Webhook/API request to the respective Python bot running externally, updating its state instantly.
+
+5. **Security:**
+   - Implement secure session-based or JWT authentication for the Admin Dashboard interface.
+   - Use environment variables (Secrets) for all database URIs, API keys, and external bot webhook target URLs.
+
+Provide a clean, modular file structure with a clear README detailing how external repositories should format their JSON payloads when sending data to this Samuga AI central hub.

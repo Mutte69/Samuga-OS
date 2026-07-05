@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Samuga AI Admin"
+version = "1.0.0"
+id = "artifacts/samuga-admin"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 26195
+
+[services.development]
+run = "pnpm --filter @workspace/samuga-admin run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/samuga-admin", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/samuga-admin/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26195"
+BASE_PATH = "/"
