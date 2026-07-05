@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
+import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 
 export interface LivePayload {
   type: "event" | "metric";
@@ -39,13 +40,35 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const retryMsRef = useRef(INITIAL_RETRY_MS);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Track auth state — treat as authenticated only when we have user data
+  const { data: meData, isSuccess: isAuthenticated } = useGetMe({
+    query: { retry: false, staleTime: 30_000, queryKey: getGetMeQueryKey() },
+  });
+  // Suppress unused variable warning — we only care about the auth flag
+  void meData;
+
   const subscribe = useCallback((listener: Listener) => {
     listenersRef.current.add(listener);
     return () => { listenersRef.current.delete(listener); };
   }, []);
 
   useEffect(() => {
+    // Don't open SSE until the user is authenticated
+    if (!isAuthenticated) {
+      // If we somehow have a stale connection from before, close it
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      esRef.current?.close();
+      esRef.current = null;
+      setIsLive(false);
+      return;
+    }
+
     let destroyed = false;
+    // Reset backoff whenever we (re)connect due to a fresh login
+    retryMsRef.current = INITIAL_RETRY_MS;
 
     function connect() {
       if (destroyed) return;
@@ -87,11 +110,12 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     return () => {
       destroyed = true;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
       esRef.current?.close();
       esRef.current = null;
       setIsLive(false);
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // Fire toasts when live events arrive
   useEffect(() => {

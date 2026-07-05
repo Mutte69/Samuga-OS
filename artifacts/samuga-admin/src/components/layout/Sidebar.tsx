@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
-import { useLogout } from "@workspace/api-client-react";
+import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { 
   LayoutDashboard,
@@ -92,10 +93,13 @@ function LiveIndicator() {
 export function Sidebar() {
   const [location, setLocation] = useLocation();
   const logout = useLogout();
+  const queryClient = useQueryClient();
 
   const handleLogout = () => {
     logout.mutate(undefined, {
       onSuccess: () => {
+        // Invalidate the session cache so LiveProvider stops the SSE connection immediately
+        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
         setLocation("/");
       }
     });
