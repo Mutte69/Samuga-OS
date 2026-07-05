@@ -111,6 +111,7 @@ function buildChartData(
 export default function Traffic() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | "all">("all");
   const [dateRange, setDateRange] = useState<DateRange>(30);
+  const [pageSearch, setPageSearch] = useState("");
 
   // ── 1. Fetch projects ──────────────────────────────────────────────────
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
@@ -164,6 +165,9 @@ export default function Traffic() {
   );
 
   const topPages = topPagesByPath(visitsForTopPages);
+  const filteredTopPages = pageSearch.trim()
+    ? topPages.filter((row) => row.path.toLowerCase().includes(pageSearch.trim().toLowerCase()))
+    : topPages;
   const referrers = topReferrers(visitsForTopPages);
   const countries = topCountries(visitsForTopPages);
 
@@ -347,28 +351,44 @@ export default function Traffic() {
           style={{ borderColor: "rgba(34,211,238,0.12)" }}
         >
           <h2 className="text-base font-semibold text-white">Top Pages</h2>
-          {/* Project filter */}
-          <select
-            value={selectedProjectId}
-            onChange={(e) =>
-              setSelectedProjectId(e.target.value === "all" ? "all" : Number(e.target.value))
-            }
-            className="rounded-lg px-3 py-1.5 text-sm font-mono text-slate-200 outline-none focus:ring-1"
-            style={{
-              background: "rgba(5,14,30,0.9)",
-              border: "1px solid rgba(34,211,238,0.25)",
-              color: "#e2e8f0",
-              /* @ts-ignore */
-              focusRingColor: "#22d3ee",
-            }}
-          >
-            <option value="all">All projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Path search */}
+            <input
+              type="text"
+              value={pageSearch}
+              onChange={(e) => setPageSearch(e.target.value)}
+              placeholder="Filter by path…"
+              className="rounded-lg px-3 py-1.5 text-sm font-mono text-slate-200 outline-none placeholder:text-slate-500"
+              style={{
+                background: "rgba(5,14,30,0.9)",
+                border: "1px solid rgba(34,211,238,0.25)",
+                color: "#e2e8f0",
+                minWidth: 160,
+              }}
+            />
+            {/* Project filter */}
+            <select
+              value={selectedProjectId}
+              onChange={(e) =>
+                setSelectedProjectId(e.target.value === "all" ? "all" : Number(e.target.value))
+              }
+              className="rounded-lg px-3 py-1.5 text-sm font-mono text-slate-200 outline-none focus:ring-1"
+              style={{
+                background: "rgba(5,14,30,0.9)",
+                border: "1px solid rgba(34,211,238,0.25)",
+                color: "#e2e8f0",
+                /* @ts-ignore */
+                focusRingColor: "#22d3ee",
+              }}
+            >
+              <option value="all">All projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {isLoading ? (
@@ -382,6 +402,10 @@ export default function Traffic() {
           <p className="text-slate-500 text-sm text-center py-8">
             No visit data for the selected project.
           </p>
+        ) : filteredTopPages.length === 0 ? (
+          <p className="text-slate-500 text-sm text-center py-8">
+            No pages match <span className="font-mono text-slate-400">"{pageSearch}"</span>.
+          </p>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -393,7 +417,7 @@ export default function Traffic() {
               </tr>
             </thead>
             <tbody>
-              {topPages.map((row, idx) => (
+              {filteredTopPages.map((row, idx) => (
                 <tr
                   key={row.path}
                   className="border-b hover:bg-white/5 transition-colors"
