@@ -1,11 +1,15 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import type { ReactNode } from "react";
+import { toast } from "sonner";
 
 export interface LivePayload {
   type: "event" | "metric";
   projectId: number;
   data: Record<string, unknown>;
 }
+
+const MAX_TOASTS = 3;
+let activeToastCount = 0;
 
 type Listener = (payload: LivePayload) => void;
 
@@ -88,6 +92,42 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       setIsLive(false);
     };
   }, []);
+
+  // Fire toasts when live events arrive
+  useEffect(() => {
+    const unsub = subscribe((payload) => {
+      if (payload.type !== "event") return;
+      if (activeToastCount >= MAX_TOASTS) return;
+
+      const data = payload.data;
+      const eventType = typeof data.eventType === "string" ? data.eventType : "";
+      const projectName =
+        typeof data.projectName === "string" ? data.projectName : `Project ${payload.projectId}`;
+      const message =
+        typeof data.message === "string" ? data.message : eventType || "New event";
+
+      activeToastCount++;
+
+      const onDismiss = () => { activeToastCount = Math.max(0, activeToastCount - 1); };
+
+      if (eventType === "error") {
+        toast.error(`${projectName}: ${message}`, {
+          duration: 6000,
+          onDismiss,
+          onAutoClose: onDismiss,
+        });
+      } else {
+        toast(`${projectName}: ${message}`, {
+          duration: 4000,
+          style: { borderLeft: "3px solid #06b6d4" },
+          onDismiss,
+          onAutoClose: onDismiss,
+        });
+      }
+    });
+
+    return unsub;
+  }, [subscribe]);
 
   return (
     <LiveContext.Provider value={{ isLive, subscribe }}>
