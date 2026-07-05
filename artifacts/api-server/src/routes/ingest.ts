@@ -16,7 +16,15 @@ async function resolveProjectId(
   project_slug: unknown,
 ): Promise<{ id: number } | { error: string; status: number }> {
   if (typeof project_id === "number") {
-    return { id: project_id };
+    const [project] = await db
+      .select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(eq(projectsTable.id, project_id))
+      .limit(1);
+    if (!project) {
+      return { error: `No project found with id ${project_id}`, status: 404 };
+    }
+    return { id: project.id };
   }
   if (typeof project_slug === "string") {
     const [project] = await db
@@ -30,6 +38,16 @@ async function resolveProjectId(
     return { id: project.id };
   }
   return { error: "Required: project_id (number) or project_slug (string)", status: 400 };
+}
+
+// ── Helper: check if a PostgreSQL error is a foreign-key violation ───────────
+function isForeignKeyViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: string }).code === "23503"
+  );
 }
 
 // ── GET /ingest/projects ────────────────────────────────────────────────────
@@ -74,10 +92,19 @@ router.post("/ingest/event", requireIngestKey, async (req, res): Promise<void> =
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
-  const [row] = await db
-    .insert(projectEventsTable)
-    .values({ projectId: resolved.id, eventType: event_type, message, metadata: metadata ?? null })
-    .returning();
+  let row: typeof projectEventsTable.$inferSelect;
+  try {
+    [row] = await db
+      .insert(projectEventsTable)
+      .values({ projectId: resolved.id, eventType: event_type, message, metadata: metadata ?? null })
+      .returning();
+  } catch (err) {
+    if (isForeignKeyViolation(err)) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    throw err;
+  }
 
   // Broadcast to live SSE clients
   eventBus.emit("live", { type: "event", projectId: resolved.id, data: row });
@@ -97,10 +124,19 @@ router.post("/ingest/metric", requireIngestKey, async (req, res): Promise<void> 
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
-  const [row] = await db
-    .insert(projectMetricsTable)
-    .values({ projectId: resolved.id, metricName: metric_name, value: String(value), unit: unit ?? null })
-    .returning();
+  let row: typeof projectMetricsTable.$inferSelect;
+  try {
+    [row] = await db
+      .insert(projectMetricsTable)
+      .values({ projectId: resolved.id, metricName: metric_name, value: String(value), unit: unit ?? null })
+      .returning();
+  } catch (err) {
+    if (isForeignKeyViolation(err)) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    throw err;
+  }
 
   // Broadcast to live SSE clients
   eventBus.emit("live", { type: "metric", projectId: resolved.id, data: row });
@@ -124,17 +160,26 @@ router.post("/ingest/conversation", requireIngestKey, async (req, res): Promise<
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
-  const [row] = await db
-    .insert(aiConversationsTable)
-    .values({
-      projectId: resolved.id,
-      sessionId: session_id,
-      userMessage: user_message,
-      assistantMessage: assistant_message,
-      model: model ?? null,
-      tokensUsed: typeof tokens_used === "number" ? tokens_used : null,
-    })
-    .returning();
+  let row: typeof aiConversationsTable.$inferSelect;
+  try {
+    [row] = await db
+      .insert(aiConversationsTable)
+      .values({
+        projectId: resolved.id,
+        sessionId: session_id,
+        userMessage: user_message,
+        assistantMessage: assistant_message,
+        model: model ?? null,
+        tokensUsed: typeof tokens_used === "number" ? tokens_used : null,
+      })
+      .returning();
+  } catch (err) {
+    if (isForeignKeyViolation(err)) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    throw err;
+  }
   res.status(201).json({ ok: true, id: row.id });
 });
 
@@ -150,16 +195,25 @@ router.post("/ingest/website-visit", requireIngestKey, async (req, res): Promise
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
-  const [row] = await db
-    .insert(websiteVisitsTable)
-    .values({
-      projectId: resolved.id,
-      pagePath: page_path,
-      referrer: referrer ?? null,
-      userAgent: user_agent ?? null,
-      country: country ?? null,
-    })
-    .returning();
+  let row: typeof websiteVisitsTable.$inferSelect;
+  try {
+    [row] = await db
+      .insert(websiteVisitsTable)
+      .values({
+        projectId: resolved.id,
+        pagePath: page_path,
+        referrer: referrer ?? null,
+        userAgent: user_agent ?? null,
+        country: country ?? null,
+      })
+      .returning();
+  } catch (err) {
+    if (isForeignKeyViolation(err)) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    throw err;
+  }
   res.status(201).json({ ok: true, id: row.id });
 });
 
