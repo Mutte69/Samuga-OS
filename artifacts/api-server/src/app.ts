@@ -1,10 +1,11 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { telemetry } from "./lib/telemetry";
 import { pool } from "@workspace/db";
 
 const app: Express = express();
@@ -179,6 +180,34 @@ app.use(
     },
   }),
 );
+
+// ── Per-request telemetry middleware ─────────────────────────────────────────
+// Fires after every completed API request: tracks request count + response time.
+// Uses res.on("finish") so it never blocks the response.
+app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const elapsed = Date.now() - start;
+    const isError = res.statusCode >= 500;
+    const isClientErr = res.statusCode >= 400 && res.statusCode < 500;
+
+    telemetry.metric("requests_handled", 1, "count");
+    telemetry.metric("response_time_ms", elapsed, "ms");
+
+    if (isError) {
+      telemetry.metric("failed_actions", 1, "count");
+      telemetry.event("error", `${req.method} ${req.path} → ${res.statusCode}`, {
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        duration_ms: elapsed,
+      });
+    } else if (!isClientErr) {
+      telemetry.metric("successful_actions", 1, "count");
+    }
+  });
+  next();
+});
 
 app.use("/api", router);
 

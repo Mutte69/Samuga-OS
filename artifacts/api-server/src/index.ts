@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { telemetry } from "./lib/telemetry";
 
 const rawPort = process.env["PORT"];
 
@@ -15,11 +16,58 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
+const server = app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
   }
 
   logger.info({ port }, "Server listening");
+
+  // ── Startup telemetry ────────────────────────────────────────────────────
+  const svc = process.env.PROJECT_NAME ?? "samuga-os-api";
+  telemetry.event("info", "service telemetry connected", {
+    service: svc,
+    port,
+    node_env: process.env.NODE_ENV ?? "development",
+  });
+});
+
+// ── Graceful shutdown ─────────────────────────────────────────────────────────
+
+async function shutdown(signal: string): Promise<void> {
+  logger.info({ signal }, "Shutdown signal received");
+  telemetry.event("warn", `service shutting down (${signal})`, {
+    service: process.env.PROJECT_NAME ?? "samuga-os-api",
+  });
+
+  // Give telemetry a moment to fire before closing the server
+  await new Promise<void>((resolve) => setTimeout(resolve, 300));
+
+  server.close(() => {
+    logger.info("Server closed");
+    process.exit(0);
+  });
+
+  // Hard exit if server hasn't closed within 5 s
+  setTimeout(() => process.exit(1), 5_000).unref();
+}
+
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
+
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "Uncaught exception");
+  telemetry.event("error", `uncaught exception: ${err.message}`, {
+    service: process.env.PROJECT_NAME ?? "samuga-os-api",
+    stack: err.stack?.slice(0, 400),
+  });
+});
+
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  logger.error({ reason }, "Unhandled rejection");
+  telemetry.event("error", `unhandled rejection: ${msg}`, {
+    service: process.env.PROJECT_NAME ?? "samuga-os-api",
+  });
 });
