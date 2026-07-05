@@ -14,15 +14,27 @@ let activeToastCount = 0;
 
 type Listener = (payload: LivePayload) => void;
 
+export const DEFAULT_MUTE_MS = 5 * 60 * 1000; // 5 minutes
+
 interface LiveContextValue {
   isLive: boolean;
+  isMuted: boolean;
+  muteUntil: Date | null;
   /** Subscribe to live payloads. Returns an unsubscribe function. */
   subscribe: (listener: Listener) => () => void;
+  /** Mute toasts for the given duration (default 5 min). */
+  mute: (durationMs?: number) => void;
+  /** Unmute immediately. */
+  unmute: () => void;
 }
 
 const LiveContext = createContext<LiveContextValue>({
   isLive: false,
+  isMuted: false,
+  muteUntil: null,
   subscribe: () => () => {},
+  mute: () => {},
+  unmute: () => {},
 });
 
 export function useLive() {
@@ -53,6 +65,8 @@ function fireNotification(title: string, body: string) {
 
 export function LiveProvider({ children }: { children: ReactNode }) {
   const [isLive, setIsLive] = useState(false);
+  const [muteUntil, setMuteUntil] = useState<Date | null>(null);
+  const muteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listenersRef = useRef<Set<Listener>>(new Set());
   const esRef = useRef<EventSource | null>(null);
   const retryMsRef = useRef(INITIAL_RETRY_MS);
@@ -67,6 +81,24 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   });
   // Suppress unused variable warning — we only care about the auth flag
   void meData;
+
+  const isMuted = muteUntil !== null && muteUntil > new Date();
+
+  const mute = useCallback((durationMs: number = DEFAULT_MUTE_MS) => {
+    if (muteTimerRef.current) clearTimeout(muteTimerRef.current);
+    const until = new Date(Date.now() + durationMs);
+    setMuteUntil(until);
+    muteTimerRef.current = setTimeout(() => {
+      setMuteUntil(null);
+      muteTimerRef.current = null;
+    }, durationMs);
+  }, []);
+
+  const unmute = useCallback(() => {
+    if (muteTimerRef.current) clearTimeout(muteTimerRef.current);
+    muteTimerRef.current = null;
+    setMuteUntil(null);
+  }, []);
 
   const subscribe = useCallback((listener: Listener) => {
     listenersRef.current.add(listener);
@@ -174,7 +206,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         fireNotification(`${projectName} error`, message);
       }
 
-      // ── Toasts (always, regardless of visibility) ──
+      // ── Toasts — suppressed while muted ──
+      if (muteUntil !== null && muteUntil > new Date()) return;
+
       if (activeToastCount >= MAX_TOASTS) return;
 
       activeToastCount++;
@@ -197,10 +231,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     });
 
     return unsub;
-  }, [subscribe]);
+  }, [subscribe, muteUntil]);
 
   return (
-    <LiveContext.Provider value={{ isLive, subscribe }}>
+    <LiveContext.Provider value={{ isLive, isMuted, muteUntil, subscribe, mute, unmute }}>
       {children}
     </LiveContext.Provider>
   );
