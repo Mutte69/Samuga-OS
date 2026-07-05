@@ -18,14 +18,19 @@ export default function Login() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     login.mutate({ data: { username, password } }, {
-      onSuccess: () => {
+      onSuccess: (data) => {
+        console.log("[login] response JSON:", JSON.stringify(data));
+        console.log("[login] detected success:", true);
+        console.log("[login] navigating to:", "/dashboard");
         toast.success("Authentication successful");
         // Invalidate the /auth/me cache so ProtectedRoute always does a
         // fresh fetch after login — never hits a stale 401 from before.
         queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
         setLocation("/dashboard");
       },
-      onError: () => {
+      onError: (err) => {
+        console.log("[login] detected success:", false);
+        console.log("[login] error:", String(err));
         toast.error("Authentication failed", { description: "Invalid credentials." });
       }
     });
