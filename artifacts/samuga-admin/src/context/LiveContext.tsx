@@ -25,10 +25,81 @@ let activeToastCount = 0;
 
 export const DEFAULT_MUTE_MS = 5 * 60 * 1000; // 5 minutes
 
+/** localStorage key that persists the operator's notification preference. */
+const NOTIFICATION_PREF_KEY = "samuga-notification-pref";
+
+/**
+ * Read the persisted notification preference from localStorage.
+ * Falls back to the live browser permission state if nothing is stored yet.
+ */
+function readStoredNotificationPref(): NotificationPermission | "unsupported" {
+  if (!("Notification" in window)) return "unsupported";
+  try {
+    const stored = localStorage.getItem(NOTIFICATION_PREF_KEY);
+    if (stored === "granted" || stored === "denied" || stored === "default") {
+      return stored;
+    }
+  } catch {
+    // localStorage may be unavailable in some private-browsing contexts
+  }
+  // Nothing stored — mirror the current browser permission so we start accurate
+  return Notification.permission;
+}
+
+/** Persist the notification permission result to localStorage. */
+function storeNotificationPref(perm: NotificationPermission): void {
+  try {
+    localStorage.setItem(NOTIFICATION_PREF_KEY, perm);
+  } catch {
+    // ignore write failures
+  }
+}
+
+/**
+ * Request notification permission once (only when the stored pref is "default").
+ * Persists the result to localStorage so subsequent mounts skip the prompt.
+ * Returns true if permission is (now) granted.
+ */
+async function requestNotificationPermission(): Promise<boolean> {
+  if (!("Notification" in window)) return false;
+
+  // If the browser already knows the answer, persist it and return
+  if (Notification.permission === "granted") {
+    storeNotificationPref("granted");
+    return true;
+  }
+  if (Notification.permission === "denied") {
+    storeNotificationPref("denied");
+    return false;
+  }
+
+  // Check what we stored on a previous session
+  const stored = readStoredNotificationPref();
+  if (stored === "denied") {
+    // The operator explicitly denied on a previous session — don't re-prompt
+    return false;
+  }
+
+  // "default" or nothing stored — ask the user
+  const result = await Notification.requestPermission();
+  storeNotificationPref(result);
+  return result === "granted";
+}
+
+/** Fire a browser Notification if permitted. */
+function fireNotification(title: string, body: string) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const n = new Notification(title, { body, icon: "/favicon.ico", tag: "samuga-error" });
+  // Auto-close after 8 s so it doesn't linger forever
+  setTimeout(() => n.close(), 8_000);
+}
+
 interface LiveContextValue {
   isLive: boolean;
   isMuted: boolean;
   muteUntil: Date | null;
+  /** Whether the operator has granted browser notification permission. */
+  notificationsEnabled: boolean;
   /** Subscribe to live payloads. Returns an unsubscribe function. */
   subscribe: (listener: Listener) => () => void;
   /** Subscribe to rate-limit events. Returns an unsubscribe function. */
@@ -43,6 +114,7 @@ const LiveContext = createContext<LiveContextValue>({
   isLive: false,
   isMuted: false,
   muteUntil: null,
+  notificationsEnabled: false,
   subscribe: () => () => {},
   subscribeRateLimit: () => () => {},
   mute: () => {},
@@ -67,26 +139,14 @@ const INITIAL_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 30_000;
 const BASE_TITLE = document.title || "Samuga Admin";
 
-/** Request notification permission once, silently. */
-async function requestNotificationPermission(): Promise<boolean> {
-  if (!("Notification" in window)) return false;
-  if (Notification.permission === "granted") return true;
-  if (Notification.permission === "denied") return false;
-  const result = await Notification.requestPermission();
-  return result === "granted";
-}
-
-/** Fire a browser Notification if permitted. */
-function fireNotification(title: string, body: string) {
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
-  const n = new Notification(title, { body, icon: "/favicon.ico", tag: "samuga-error" });
-  // Auto-close after 8 s so it doesn't linger forever
-  setTimeout(() => n.close(), 8_000);
-}
-
 export function LiveProvider({ children }: { children: ReactNode }) {
   const [isLive, setIsLive] = useState(false);
   const [muteUntil, setMuteUntil] = useState<Date | null>(null);
+  // Initialise from localStorage so the value is correct on first render
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
+    () => readStoredNotificationPref() === "granted",
+  );
+
   const muteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listenersRef = useRef<Set<Listener>>(new Set());
   const rateLimitListenersRef = useRef<Set<RateLimitListener>>(new Set());
@@ -158,8 +218,12 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Ask for notification permission in the background (non-blocking)
-    void requestNotificationPermission();
+    // Ask for notification permission in the background (non-blocking).
+    // requestNotificationPermission persists the result to localStorage and
+    // skips the browser prompt if the operator already answered on a previous session.
+    void requestNotificationPermission().then((granted) => {
+      setNotificationsEnabled(granted);
+    });
 
     let destroyed = false;
     // Reset backoff whenever we (re)connect due to a fresh login
@@ -301,7 +365,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [subscribe, muteUntil]);
 
   return (
-    <LiveContext.Provider value={{ isLive, isMuted, muteUntil, subscribe, subscribeRateLimit, mute, unmute }}>
+    <LiveContext.Provider value={{ isLive, isMuted, muteUntil, notificationsEnabled, subscribe, subscribeRateLimit, mute, unmute }}>
       {children}
     </LiveContext.Provider>
   );
