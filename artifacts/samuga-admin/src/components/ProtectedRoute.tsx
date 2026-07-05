@@ -4,10 +4,10 @@ import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [, setLocation] = useLocation();
-  const { data, isLoading, isError } = useGetMe({
+  const { data, isPending, isError } = useGetMe({
     query: {
       retry: false,
-      queryKey: getGetMeQueryKey()
+      queryKey: getGetMeQueryKey(),
     }
   });
 
@@ -17,7 +17,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     }
   }, [isError, setLocation]);
 
-  if (isLoading) {
+  // isPending covers both the initial fetch and any subsequent refetch before
+  // data arrives — never redirect while we're still waiting for /auth/me.
+  if (isPending) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-muted-foreground">

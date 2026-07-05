@@ -52,7 +52,11 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
+      // In production the admin frontend is on a different origin (cross-site),
+      // so we need SameSite=None + Secure so the browser will include the cookie
+      // in cross-origin requests made with credentials: 'include'.
       secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
   }),

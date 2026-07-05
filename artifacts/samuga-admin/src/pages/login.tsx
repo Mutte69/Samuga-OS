@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { useLogin } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLogin, getGetMeQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { toast } from "sonner";
 
 export default function Login() {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const login = useLogin();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -18,6 +20,9 @@ export default function Login() {
     login.mutate({ data: { username, password } }, {
       onSuccess: () => {
         toast.success("Authentication successful");
+        // Invalidate the /auth/me cache so ProtectedRoute always does a
+        // fresh fetch after login — never hits a stale 401 from before.
+        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
         setLocation("/dashboard");
       },
       onError: () => {
