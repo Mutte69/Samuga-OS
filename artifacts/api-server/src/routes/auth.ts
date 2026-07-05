@@ -14,7 +14,7 @@ if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
 }
 
 console.log(
-  `[auth] ADMIN_USERNAME loaded: length=${ADMIN_USERNAME.length}, first_char="${ADMIN_USERNAME[0]}"`,
+  `[auth] ADMIN_USERNAME loaded (length=${ADMIN_USERNAME.length})`,
 );
 
 router.post("/auth/login", async (req, res): Promise<void> => {
@@ -25,21 +25,21 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
 
   const { username, password } = parsed.data;
-  const usernameMatch = username.trim() === ADMIN_USERNAME;
-  const passwordMatch = password.trim() === ADMIN_PASSWORD;
+  const valid =
+    username.trim() === ADMIN_USERNAME && password.trim() === ADMIN_PASSWORD;
 
-  console.log(
-    `[auth] login attempt: provided_username="${username.trim()}" username_match=${usernameMatch} password_match=${passwordMatch}`,
-  );
-
-  if (!usernameMatch || !passwordMatch) {
+  if (!valid) {
+    console.log("[auth] login failed: invalid credentials");
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
 
+  // Store the canonical env-var username (trimmed) so /auth/me returns a
+  // consistent value regardless of what the client submitted.
   const session = req.session as { adminUser?: string };
-  session.adminUser = username;
-  res.json({ username });
+  session.adminUser = ADMIN_USERNAME;
+  console.log("[auth] login succeeded");
+  res.json({ username: ADMIN_USERNAME });
 });
 
 router.post("/auth/logout", (req, res): void => {

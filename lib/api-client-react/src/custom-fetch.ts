@@ -360,7 +360,11 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  // Include session cookies for cross-origin requests (e.g. admin frontend on
+  // a different subdomain calling the API server).  Callers can override with
+  // credentials: 'omit' if they need to suppress this.
+  const credentials = init.credentials ?? "include";
+  const response = await fetch(input, { ...init, method, headers, credentials });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);
