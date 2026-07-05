@@ -3,20 +3,34 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Samuga AI — centralized data ingestion, orchestration, and admin API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Admin authentication
+  - name: logs
+    description: System log ingestion and retrieval
+  - name: analytics
+    description: User analytics ingestion and retrieval
+  - name: configs
+    description: System configuration management
+  - name: api-keys
+    description: API key management for external integrations
+  - name: ai
+    description: AI analysis engine
+  - name: dashboard
+    description: Dashboard overview statistics
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +38,660 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginCredentials"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Admin logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current admin session
+      responses:
+        "200":
+          description: Current admin user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Dashboard ──────────────────────────────────────────────────────────────
+  /v1/dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard overview statistics
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  # ── System Logs ────────────────────────────────────────────────────────────
+  /v1/logs:
+    post:
+      operationId: ingestLog
+      tags: [logs]
+      summary: Ingest a log entry from an external source (API key auth)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogEntry"
+      responses:
+        "201":
+          description: Log ingested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemLog"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      operationId: listLogs
+      tags: [logs]
+      summary: List system logs with filtering
+      parameters:
+        - name: source_repo
+          in: query
+          schema:
+            type: string
+          description: Filter by source repository name
+        - name: log_level
+          in: query
+          schema:
+            type: string
+            enum: [debug, info, warn, error]
+          description: Filter by log level
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Full-text search on message
+      responses:
+        "200":
+          description: List of system logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogList"
+
+  # ── User Analytics ────────────────────────────────────────────────────────
+  /v1/telemetry:
+    post:
+      operationId: ingestTelemetry
+      tags: [analytics]
+      summary: Ingest user analytics / telemetry from an external source (API key auth)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelemetryEntry"
+      responses:
+        "201":
+          description: Telemetry ingested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAnalytic"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/analytics:
+    get:
+      operationId: listAnalytics
+      tags: [analytics]
+      summary: List user analytics records
+      parameters:
+        - name: platform
+          in: query
+          schema:
+            type: string
+          description: Filter by platform name
+        - name: action
+          in: query
+          schema:
+            type: string
+          description: Filter by action performed
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of analytics records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticList"
+
+  # ── System Configs ────────────────────────────────────────────────────────
+  /v1/configs:
+    get:
+      operationId: listConfigs
+      tags: [configs]
+      summary: List all system configuration entries
+      responses:
+        "200":
+          description: List of configs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SystemConfig"
+
+    post:
+      operationId: upsertConfig
+      tags: [configs]
+      summary: Create or update a system configuration entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigInput"
+      responses:
+        "200":
+          description: Config upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemConfig"
+
+  /v1/configs/{key}:
+    delete:
+      operationId: deleteConfig
+      tags: [configs]
+      summary: Delete a system configuration entry
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Config deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Config not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/configs/{key}/push:
+    post:
+      operationId: pushConfig
+      tags: [configs]
+      summary: Push config change to an external bot via its registered webhook
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Webhook push result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookPushResult"
+        "404":
+          description: Config not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── API Keys ────────────────────────────────────────────────────────────
+  /v1/api-keys:
+    get:
+      operationId: listApiKeys
+      tags: [api-keys]
+      summary: List all API keys (values masked)
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiKey"
+
+    post:
+      operationId: createApiKey
+      tags: [api-keys]
+      summary: Create a new API key for external integrations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiKeyInput"
+      responses:
+        "201":
+          description: API key created (full value returned only once)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyCreated"
+
+  /v1/api-keys/{id}:
+    delete:
+      operationId: deleteApiKey
+      tags: [api-keys]
+      summary: Revoke an API key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: API key revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: API key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── AI Engine ────────────────────────────────────────────────────────────
+  /v1/ai/analyze:
+    post:
+      operationId: analyzeText
+      tags: [ai]
+      summary: Analyze text using the AI engine (structured summary, smart reply, or classification)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeRequest"
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyzeResult"
+        "503":
+          description: AI engine not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    SuccessResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    # ── Auth ──────────────────────────────────────────────────────────────
+    LoginCredentials:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    AdminUser:
+      type: object
+      required: [username]
+      properties:
+        username:
+          type: string
+
+    # ── Dashboard ──────────────────────────────────────────────────────────
+    DashboardStats:
+      type: object
+      required: [totalLogs, totalAnalytics, totalConfigs, totalApiKeys, logsByLevel, recentActivity, platformBreakdown]
+      properties:
+        totalLogs:
+          type: integer
+        totalAnalytics:
+          type: integer
+        totalConfigs:
+          type: integer
+        totalApiKeys:
+          type: integer
+        logsByLevel:
+          type: array
+          items:
+            $ref: "#/components/schemas/LogLevelCount"
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityPoint"
+        platformBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlatformCount"
+
+    LogLevelCount:
+      type: object
+      required: [level, count]
+      properties:
+        level:
+          type: string
+        count:
+          type: integer
+
+    ActivityPoint:
+      type: object
+      required: [hour, logs, analytics]
+      properties:
+        hour:
+          type: string
+        logs:
+          type: integer
+        analytics:
+          type: integer
+
+    PlatformCount:
+      type: object
+      required: [platform, count]
+      properties:
+        platform:
+          type: string
+        count:
+          type: integer
+
+    # ── System Logs ────────────────────────────────────────────────────────
+    LogEntry:
+      type: object
+      required: [source_repo, log_level, message]
+      properties:
+        source_repo:
+          type: string
+          description: Name of the external repo/bot sending the log
+        log_level:
+          type: string
+          enum: [debug, info, warn, error]
+        message:
+          type: string
+
+    SystemLog:
+      type: object
+      required: [id, source_repo, log_level, message, timestamp]
+      properties:
+        id:
+          type: integer
+        source_repo:
+          type: string
+        log_level:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+
+    LogList:
+      type: object
+      required: [logs, total]
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemLog"
+        total:
+          type: integer
+
+    # ── User Analytics ────────────────────────────────────────────────────
+    TelemetryEntry:
+      type: object
+      required: [platform, user_identifier, action_performed]
+      properties:
+        platform:
+          type: string
+          description: Name of the platform/app sending the event
+        user_identifier:
+          type: string
+        action_performed:
+          type: string
+        data_payload:
+          type: object
+          description: Arbitrary JSON metadata
+
+    UserAnalytic:
+      type: object
+      required: [id, platform, user_identifier, action_performed, timestamp]
+      properties:
+        id:
+          type: integer
+        platform:
+          type: string
+        user_identifier:
+          type: string
+        action_performed:
+          type: string
+        data_payload:
+          type: ["object", "null"]
+        timestamp:
+          type: string
+
+    AnalyticList:
+      type: object
+      required: [analytics, total]
+      properties:
+        analytics:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserAnalytic"
+        total:
+          type: integer
+
+    # ── System Configs ────────────────────────────────────────────────────
+    SystemConfig:
+      type: object
+      required: [id, key, value, description, webhook_url, updatedAt]
+      properties:
+        id:
+          type: integer
+        key:
+          type: string
+        value:
+          type: string
+        description:
+          type: ["string", "null"]
+        webhook_url:
+          type: ["string", "null"]
+          description: URL to push config changes to the external bot
+        updatedAt:
+          type: string
+
+    ConfigInput:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        description:
+          type: string
+        webhook_url:
+          type: string
+
+    WebhookPushResult:
+      type: object
+      required: [success, statusCode]
+      properties:
+        success:
+          type: boolean
+        statusCode:
+          type: integer
+        message:
+          type: ["string", "null"]
+
+    # ── API Keys ────────────────────────────────────────────────────────────
+    ApiKey:
+      type: object
+      required: [id, name, keyPreview, createdAt, lastUsed]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        keyPreview:
+          type: string
+          description: First 8 chars + "..." for display
+        createdAt:
+          type: string
+        lastUsed:
+          type: ["string", "null"]
+
+    ApiKeyInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    ApiKeyCreated:
+      type: object
+      required: [id, name, key, keyPreview, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        key:
+          type: string
+          description: Full key value — only returned on creation
+        keyPreview:
+          type: string
+        createdAt:
+          type: string
+
+    # ── AI Engine ─────────────────────────────────────────────────────────
+    AnalyzeRequest:
+      type: object
+      required: [text, mode]
+      properties:
+        text:
+          type: string
+          description: Raw text to analyze
+        mode:
+          type: string
+          enum: [summarize, classify, reply]
+          description: "summarize: structured summary; classify: label + tags; reply: smart reply draft"
+        context:
+          type: string
+          description: Optional context about the source (e.g. 'news bot scrape', 'customer travel query')
+
+    AnalyzeResult:
+      type: object
+      required: [mode, result]
+      properties:
+        mode:
+          type: string
+        result:
+          type: string
+        metadata:
+          type: ["object", "null"]

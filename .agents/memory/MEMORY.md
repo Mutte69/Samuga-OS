@@ -1,0 +1,2 @@
+- [Samuga AI stack decisions](samuga-ai-stack.md) — session auth + API key auth pattern; fail-fast env var enforcement; AI as optional feature
+- [DB lib stale declarations fix](db-stale-declarations.md) — after schema/index.ts changes, run typecheck:libs before artifact typecheck or get TS2305
