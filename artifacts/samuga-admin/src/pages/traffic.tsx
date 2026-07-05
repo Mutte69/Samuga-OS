@@ -19,10 +19,15 @@ const CARD_STYLE = {
 
 type DateRange = 7 | 30 | 90;
 const DATE_RANGE_OPTIONS: { label: string; days: DateRange }[] = [
-  { label: "Last 7 days", days: 7 },
-  { label: "Last 30 days", days: 30 },
-  { label: "Last 90 days", days: 90 },
+  { label: "7d", days: 7 },
+  { label: "30d", days: 30 },
+  { label: "90d", days: 90 },
 ];
+
+/** ISO date string for today */
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 /** ISO date string for N days ago (inclusive lower bound) */
 function daysAgoISO(days: number): string {
@@ -36,11 +41,13 @@ function daysAgoISO(days: number): string {
 function groupByDay(
   visits: WebsiteVisit[],
   fromDate?: string,
+  toDate?: string,
 ): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const v of visits) {
     const day = new Date(v.visitedAt).toISOString().slice(0, 10);
     if (fromDate && day < fromDate) continue;
+    if (toDate && day > toDate) continue;
     counts[day] = (counts[day] ?? 0) + 1;
   }
   return counts;
@@ -161,7 +168,11 @@ function buildChartData(
 export default function Traffic() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | "all">("all");
   const [dateRange, setDateRange] = useState<DateRange>(30);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [pageSearch, setPageSearch] = useState("");
+
+  const isCustom = customFrom !== "" || customTo !== "";
 
   // ── 1. Fetch projects ──────────────────────────────────────────────────
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
@@ -180,7 +191,8 @@ export default function Traffic() {
   });
 
   // ── 3. Derive filtered chart data ──────────────────────────────────────
-  const fromDate = daysAgoISO(dateRange);
+  const fromDate = isCustom ? (customFrom || "1970-01-01") : daysAgoISO(dateRange);
+  const toDate = isCustom ? (customTo || todayISO()) : todayISO();
 
   const visitsByProject: Record<number, Record<string, number>> = {};
   const rawVisitsByProject: Record<number, WebsiteVisit[]> = {};
@@ -189,7 +201,7 @@ export default function Traffic() {
     if (result?.data?.visits) {
       rawVisitsByProject[projects[i].id] = result.data.visits;
       // filtered by date range
-      visitsByProject[projects[i].id] = groupByDay(result.data.visits, fromDate);
+      visitsByProject[projects[i].id] = groupByDay(result.data.visits, fromDate, toDate);
     }
   }
 
@@ -210,9 +222,10 @@ export default function Traffic() {
       ? Object.values(rawVisitsByProject).flat()
       : (rawVisitsByProject[selectedProjectId as number] ?? []);
 
-  const visitsForTopPages = rawForTopPages.filter(
-    (v) => new Date(v.visitedAt).toISOString().slice(0, 10) >= fromDate,
-  );
+  const visitsForTopPages = rawForTopPages.filter((v) => {
+    const day = new Date(v.visitedAt).toISOString().slice(0, 10);
+    return day >= fromDate && day <= toDate;
+  });
 
   const topPages = topPagesByPath(visitsForTopPages);
   const filteredTopPages = pageSearch.trim()
@@ -233,15 +246,15 @@ export default function Traffic() {
         </div>
       </div>
 
-      {/* Date-range preset buttons */}
-      <div className="flex items-center gap-2">
+      {/* Date-range controls: presets + custom range */}
+      <div className="flex items-center gap-2 flex-wrap">
         {DATE_RANGE_OPTIONS.map(({ label, days }) => (
           <button
             key={days}
-            onClick={() => setDateRange(days)}
+            onClick={() => { setDateRange(days); setCustomFrom(""); setCustomTo(""); }}
             className="px-4 py-1.5 rounded-lg text-sm font-mono transition-colors"
             style={
-              dateRange === days
+              !isCustom && dateRange === days
                 ? {
                     background: "rgba(34,211,238,0.15)",
                     border: "1px solid rgba(34,211,238,0.6)",
@@ -257,6 +270,54 @@ export default function Traffic() {
             {label}
           </button>
         ))}
+
+        {/* Divider */}
+        <span style={{ color: "rgba(148,163,184,0.3)", fontSize: 12 }}>|</span>
+
+        {/* Custom from */}
+        <input
+          type="date"
+          value={customFrom}
+          max={customTo || todayISO()}
+          onChange={(e) => setCustomFrom(e.target.value)}
+          className="rounded-lg px-3 py-1.5 text-xs font-mono outline-none"
+          style={{
+            background: "rgba(5,14,30,0.9)",
+            border: isCustom && customFrom
+              ? "1px solid rgba(34,211,238,0.6)"
+              : "1px solid rgba(34,211,238,0.25)",
+            color: customFrom ? "#e2e8f0" : "rgba(148,163,184,0.6)",
+          }}
+        />
+        <span className="text-xs font-mono" style={{ color: "rgba(148,163,184,0.5)" }}>→</span>
+        <input
+          type="date"
+          value={customTo}
+          min={customFrom || undefined}
+          max={todayISO()}
+          onChange={(e) => setCustomTo(e.target.value)}
+          className="rounded-lg px-3 py-1.5 text-xs font-mono outline-none"
+          style={{
+            background: "rgba(5,14,30,0.9)",
+            border: isCustom && customTo
+              ? "1px solid rgba(34,211,238,0.6)"
+              : "1px solid rgba(34,211,238,0.25)",
+            color: customTo ? "#e2e8f0" : "rgba(148,163,184,0.6)",
+          }}
+        />
+        {isCustom && (
+          <button
+            onClick={() => { setCustomFrom(""); setCustomTo(""); }}
+            className="px-2 py-1.5 rounded-lg text-xs font-mono transition-colors"
+            style={{
+              background: "rgba(248,113,113,0.12)",
+              border: "1px solid rgba(248,113,113,0.3)",
+              color: "rgba(248,113,113,0.8)",
+            }}
+          >
+            ✕ clear
+          </button>
+        )}
       </div>
 
       {/* KPIs */}
@@ -269,7 +330,7 @@ export default function Traffic() {
             {isLoading ? "—" : totalVisits.toLocaleString()}
           </p>
           <p className="text-xs mt-1 font-mono" style={{ color: "rgba(148,163,184,0.5)" }}>
-            Last {dateRange} days
+            {isCustom ? `${fromDate} → ${toDate}` : `Last ${dateRange} days`}
           </p>
         </div>
         <div style={CARD_STYLE} className="rounded-xl p-5">
@@ -285,7 +346,7 @@ export default function Traffic() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-white">Daily Visits by Project</h2>
           <span className="text-xs font-mono" style={{ color: "rgba(148,163,184,0.5)" }}>
-            {fromDate} → today
+            {fromDate} → {toDate}
           </span>
         </div>
         {isLoading ? (
