@@ -59,6 +59,34 @@ function topPagesByPath(visits: WebsiteVisit[]): Array<{ path: string; count: nu
     .sort((a, b) => b.count - a.count);
 }
 
+/** Aggregate visits by referrer; null/empty → "Direct" */
+function topReferrers(visits: WebsiteVisit[]): Array<{ label: string; count: number; share: number }> {
+  const counts: Record<string, number> = {};
+  for (const v of visits) {
+    const label = v.referrer?.trim() || "Direct";
+    counts[label] = (counts[label] ?? 0) + 1;
+  }
+  const total = Object.values(counts).reduce((s, n) => s + n, 0);
+  return Object.entries(counts)
+    .map(([label, count]) => ({ label, count, share: total > 0 ? (count / total) * 100 : 0 }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+}
+
+/** Aggregate visits by country; null/empty → "Unknown" */
+function topCountries(visits: WebsiteVisit[]): Array<{ label: string; count: number; share: number }> {
+  const counts: Record<string, number> = {};
+  for (const v of visits) {
+    const label = v.country?.trim() || "Unknown";
+    counts[label] = (counts[label] ?? 0) + 1;
+  }
+  const total = Object.values(counts).reduce((s, n) => s + n, 0);
+  return Object.entries(counts)
+    .map(([label, count]) => ({ label, count, share: total > 0 ? (count / total) * 100 : 0 }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+}
+
 /** Build recharts data: [{date, <projectName>: count, ...}] */
 function buildChartData(
   projects: Project[],
@@ -136,6 +164,8 @@ export default function Traffic() {
   );
 
   const topPages = topPagesByPath(visitsForTopPages);
+  const referrers = topReferrers(visitsForTopPages);
+  const countries = topCountries(visitsForTopPages);
 
   return (
     <div className="p-8 space-y-6">
@@ -241,6 +271,73 @@ export default function Traffic() {
             </LineChart>
           </ResponsiveContainer>
         )}
+      </div>
+
+      {/* Referrer + Country breakdown panels */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Top Referrers */}
+        <div style={CARD_STYLE} className="rounded-xl">
+          <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(34,211,238,0.12)" }}>
+            <h2 className="text-base font-semibold text-white">Top Referrers</h2>
+            <p className="text-xs font-mono mt-0.5" style={{ color: "rgba(148,163,184,0.5)" }}>
+              Where visitors are coming from
+            </p>
+          </div>
+          {isLoading ? (
+            <div className="py-10 flex justify-center">
+              <div className="animate-spin w-6 h-6 border-4 rounded-full" style={{ borderColor: "rgba(34,211,238,0.3)", borderTopColor: "#22d3ee" }} />
+            </div>
+          ) : referrers.length === 0 ? (
+            <p className="text-slate-500 text-sm text-center py-8">No referrer data yet.</p>
+          ) : (
+            <ul className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+              {referrers.map((r) => (
+                <li key={r.label} className="px-6 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors">
+                  <span className="flex-1 text-xs font-mono text-slate-200 truncate" title={r.label}>{r.label}</span>
+                  <span className="text-xs font-mono text-slate-400 w-10 text-right">{r.count.toLocaleString()}</span>
+                  <div className="w-24 flex items-center gap-1.5">
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                      <div className="h-full rounded-full" style={{ width: `${r.share}%`, background: "#22d3ee" }} />
+                    </div>
+                    <span className="text-xs font-mono w-9 text-right" style={{ color: "#22d3ee" }}>{r.share.toFixed(1)}%</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Top Countries */}
+        <div style={CARD_STYLE} className="rounded-xl">
+          <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(34,211,238,0.12)" }}>
+            <h2 className="text-base font-semibold text-white">Top Countries</h2>
+            <p className="text-xs font-mono mt-0.5" style={{ color: "rgba(148,163,184,0.5)" }}>
+              Geographic distribution of visitors
+            </p>
+          </div>
+          {isLoading ? (
+            <div className="py-10 flex justify-center">
+              <div className="animate-spin w-6 h-6 border-4 rounded-full" style={{ borderColor: "rgba(34,211,238,0.3)", borderTopColor: "#22d3ee" }} />
+            </div>
+          ) : countries.length === 0 ? (
+            <p className="text-slate-500 text-sm text-center py-8">No country data yet.</p>
+          ) : (
+            <ul className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+              {countries.map((c) => (
+                <li key={c.label} className="px-6 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors">
+                  <span className="flex-1 text-xs font-mono text-slate-200 truncate" title={c.label}>{c.label}</span>
+                  <span className="text-xs font-mono text-slate-400 w-10 text-right">{c.count.toLocaleString()}</span>
+                  <div className="w-24 flex items-center gap-1.5">
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                      <div className="h-full rounded-full" style={{ width: `${c.share}%`, background: "#a78bfa" }} />
+                    </div>
+                    <span className="text-xs font-mono w-9 text-right" style={{ color: "#a78bfa" }}>{c.share.toFixed(1)}%</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       {/* Top Pages table */}
