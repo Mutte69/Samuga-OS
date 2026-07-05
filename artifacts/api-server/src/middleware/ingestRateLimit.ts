@@ -40,7 +40,7 @@ const rpm = (() => {
  *     integration its own independent limit regardless of shared IP.
  *  2. Client IP address — fallback for unauthenticated requests.
  */
-function getRateLimitKey(req: Request): string {
+export function getRateLimitKey(req: Request): string {
   const authHeader = req.headers["authorization"];
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const key = authHeader.slice("Bearer ".length).trim();
@@ -53,40 +53,61 @@ function getRateLimitKey(req: Request): string {
   return `ip:${req.ip ?? "unknown"}`;
 }
 
-export const ingestRateLimit = rateLimit({
-  windowMs: 60 * 1000, // 1-minute rolling window
-  limit: rpm,          // max requests per window per key
-  standardHeaders: "draft-7", // adds RateLimit-* + Retry-After headers (RFC 9110)
-  legacyHeaders: false,
-  message: {
-    error: `Rate limit exceeded. Maximum ${rpm} requests per minute per API key.`,
-    retryAfter: "See the Retry-After header",
-  },
-  statusCode: 429,
+/**
+ * Factory that creates a rate-limit middleware with configurable limit and window.
+ * Used by the production middleware (reading from env vars) and by tests
+ * (which pass small values for fast, deterministic verification).
+ */
+export function createIngestRateLimiter(opts: {
+  limit: number;
+  windowMs: number;
+  /** When true, the 429 handler does NOT emit to eventBus/rateLimitStore (useful in tests). */
+  skipSideEffects?: boolean;
+}) {
+  const { limit, windowMs, skipSideEffects = false } = opts;
 
-  // Use the API key when present, fall back to IP.
-  keyGenerator(req: Request): string {
-    return getRateLimitKey(req);
-  },
-
-  handler(req: Request, res: Response) {
-    const key = getRateLimitKey(req);
-    // For display / logging purposes strip the prefix and show the raw value.
-    const displayKey = key.startsWith("apikey:") ? req.ip ?? "unknown" : (req.ip ?? "unknown");
-    const path = req.path ?? "/";
-    // express-rate-limit exposes the current hit count on the request object
-    // as req.rateLimit.current (draft-7 standard headers).
-    const hitCount =
-      (req as Request & { rateLimit?: { current?: number } }).rateLimit
-        ?.current ?? 1;
-
-    // Record in the ring buffer and emit to SSE clients
-    const evt = recordRateLimitHit(displayKey, path, hitCount);
-    eventBus.emit("rate_limit", { type: "rate_limit", data: evt });
-
-    res.status(429).json({
-      error: `Rate limit exceeded. Maximum ${rpm} requests per minute per API key.`,
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: "draft-7", // adds RateLimit-* + Retry-After headers (RFC 9110)
+    legacyHeaders: false,
+    message: {
+      error: `Rate limit exceeded. Maximum ${limit} requests per minute per API key.`,
       retryAfter: "See the Retry-After header",
-    });
-  },
+    },
+    statusCode: 429,
+
+    // Use the API key when present, fall back to IP.
+    keyGenerator(req: Request): string {
+      return getRateLimitKey(req);
+    },
+
+    handler(req: Request, res: Response) {
+      const key = getRateLimitKey(req);
+      // For display / logging purposes strip the prefix and show the raw value.
+      const displayKey = key.startsWith("apikey:") ? req.ip ?? "unknown" : (req.ip ?? "unknown");
+      const path = req.path ?? "/";
+      // express-rate-limit exposes the current hit count on the request object
+      // as req.rateLimit.current (draft-7 standard headers).
+      const hitCount =
+        (req as Request & { rateLimit?: { current?: number } }).rateLimit
+          ?.current ?? 1;
+
+      if (!skipSideEffects) {
+        // Record in the ring buffer and emit to SSE clients
+        const evt = recordRateLimitHit(displayKey, path, hitCount);
+        eventBus.emit("rate_limit", { type: "rate_limit", data: evt });
+      }
+
+      res.status(429).json({
+        error: `Rate limit exceeded. Maximum ${limit} requests per minute per API key.`,
+        retryAfter: "See the Retry-After header",
+      });
+    },
+  });
+}
+
+export const ingestRateLimit = createIngestRateLimiter({
+  limit: rpm,
+  windowMs: 60 * 1000, // 1-minute rolling window
 });
