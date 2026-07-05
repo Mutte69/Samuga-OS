@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, Download } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
@@ -165,6 +165,42 @@ function buildChartData(
     });
 }
 
+/** Build CSV rows: one row per (date, projectName, pagePath) aggregated visit count */
+function buildCSVRows(
+  projects: Project[],
+  rawVisitsByProject: Record<number, WebsiteVisit[]>,
+  fromDate: string,
+  toDate: string,
+): string {
+  const header = "date,project,page_path,visit_count\n";
+  type Key = string;
+  const counts: Record<Key, number> = {};
+  const meta: Record<Key, { date: string; project: string; pagePath: string }> = {};
+
+  for (const p of projects) {
+    const visits = rawVisitsByProject[p.id] ?? [];
+    for (const v of visits) {
+      const day = new Date(v.visitedAt).toISOString().slice(0, 10);
+      if (day < fromDate || day > toDate) continue;
+      const pagePath = v.pagePath || "/";
+      const key = `${day}\x00${p.name}\x00${pagePath}`;
+      counts[key] = (counts[key] ?? 0) + 1;
+      if (!meta[key]) meta[key] = { date: day, project: p.name, pagePath };
+    }
+  }
+
+  const rows = Object.entries(counts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, count]) => {
+      const { date, project, pagePath } = meta[key];
+      const escapedProject = project.includes(",") ? `"${project.replace(/"/g, '""')}"` : project;
+      const escapedPath = pagePath.includes(",") ? `"${pagePath.replace(/"/g, '""')}"` : pagePath;
+      return `${date},${escapedProject},${escapedPath},${count}`;
+    });
+
+  return header + rows.join("\n");
+}
+
 export default function Traffic() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | "all">("all");
   const [dateRange, setDateRange] = useState<DateRange>(30);
@@ -234,16 +270,40 @@ export default function Traffic() {
   const referrers = topReferrers(visitsForTopPages);
   const countries = topCountries(visitsForTopPages);
 
+  const handleExportCSV = useCallback(() => {
+    const csv = buildCSVRows(projects, rawVisitsByProject, fromDate, toDate);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `traffic-${fromDate}-to-${toDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [projects, rawVisitsByProject, fromDate, toDate]);
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center gap-3">
         <TrendingUp className="w-7 h-7" style={{ color: "#22d3ee" }} />
-        <div>
+        <div className="flex-1">
           <h1 className="text-3xl font-bold text-white">Traffic</h1>
           <p className="mt-0.5" style={{ color: "rgba(148,163,184,0.8)" }}>
             Website visit trends across projects.
           </p>
         </div>
+        <button
+          onClick={handleExportCSV}
+          disabled={isLoading || !hasData}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-mono transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: "rgba(34,211,238,0.10)",
+            border: "1px solid rgba(34,211,238,0.35)",
+            color: "#22d3ee",
+          }}
+        >
+          <Download className="w-4 h-4" />
+          Export CSV
+        </button>
       </div>
 
       {/* Date-range controls: presets + custom range */}
