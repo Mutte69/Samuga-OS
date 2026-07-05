@@ -26,6 +26,10 @@ tags:
     description: Dashboard overview statistics
   - name: repos
     description: GitHub repository manager (read-only)
+  - name: projects
+    description: Project-centric data tables (read)
+  - name: ingest
+    description: INGEST_API_KEY-protected data ingestion endpoints
 
 paths:
   /healthz:
@@ -411,6 +415,180 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ── Projects (read) ───────────────────────────────────────────────────────
+  /v1/projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List all projects ordered by name (session auth)
+      responses:
+        "200":
+          description: Project list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/projects/{id}/metrics:
+    get:
+      operationId: getProjectMetrics
+      tags: [projects]
+      summary: Last 500 metric rows for a project (session auth)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Metric rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMetricList"
+
+  /v1/projects/{id}/events:
+    get:
+      operationId: getProjectEvents
+      tags: [projects]
+      summary: Last 500 event rows for a project (session auth)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Event rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectEventList"
+
+  /v1/projects/{id}/conversations:
+    get:
+      operationId: getProjectConversations
+      tags: [projects]
+      summary: Last 200 conversation rows for a project (session auth)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiConversationList"
+
+  # ── Overview ──────────────────────────────────────────────────────────────
+  /v1/overview:
+    get:
+      operationId: getOverview
+      tags: [projects]
+      summary: Aggregate KPIs and recent activity across all projects (session auth)
+      responses:
+        "200":
+          description: Overview stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewStats"
+
+  # ── Ingest (INGEST_API_KEY auth) ──────────────────────────────────────────
+  /ingest/event:
+    post:
+      operationId: ingestEvent
+      tags: [ingest]
+      summary: Ingest a project event (Bearer INGEST_API_KEY)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestEventBody"
+      responses:
+        "201":
+          description: Event ingested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestOk"
+        "401":
+          description: Missing or invalid key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ingest/metric:
+    post:
+      operationId: ingestMetric
+      tags: [ingest]
+      summary: Ingest a project metric (Bearer INGEST_API_KEY)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestMetricBody"
+      responses:
+        "201":
+          description: Metric ingested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestOk"
+
+  /ingest/conversation:
+    post:
+      operationId: ingestConversation
+      tags: [ingest]
+      summary: Ingest an AI conversation (Bearer INGEST_API_KEY)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestConversationBody"
+      responses:
+        "201":
+          description: Conversation ingested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestOk"
+
+  /ingest/website-visit:
+    post:
+      operationId: ingestWebsiteVisit
+      tags: [ingest]
+      summary: Ingest a website visit (Bearer INGEST_API_KEY)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestWebsiteVisitBody"
+      responses:
+        "201":
+          description: Visit ingested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestOk"
+
   # ── AI Engine ────────────────────────────────────────────────────────────
   /v1/ai/analyze:
     post:
@@ -747,6 +925,221 @@ components:
           type: string
         language:
           type: ["string", "null"]
+
+    # ── Projects ──────────────────────────────────────────────────────────────
+    Project:
+      type: object
+      required: [id, name, slug, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    ProjectList:
+      type: object
+      required: [projects]
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+
+    ProjectMetric:
+      type: object
+      required: [id, projectId, metricName, value, recordedAt]
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        metricName:
+          type: string
+        value:
+          type: string
+        unit:
+          type: ["string", "null"]
+        recordedAt:
+          type: string
+
+    ProjectMetricList:
+      type: object
+      required: [metrics]
+      properties:
+        metrics:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectMetric"
+
+    ProjectEvent:
+      type: object
+      required: [id, projectId, eventType, message, occurredAt]
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        eventType:
+          type: string
+        message:
+          type: string
+        metadata:
+          type: ["object", "null"]
+        occurredAt:
+          type: string
+
+    ProjectEventList:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectEvent"
+
+    AiConversation:
+      type: object
+      required: [id, projectId, sessionId, userMessage, assistantMessage, startedAt]
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        sessionId:
+          type: string
+        userMessage:
+          type: string
+        assistantMessage:
+          type: string
+        model:
+          type: ["string", "null"]
+        tokensUsed:
+          type: ["integer", "null"]
+        startedAt:
+          type: string
+
+    AiConversationList:
+      type: object
+      required: [conversations]
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiConversation"
+
+    WebsiteVisit:
+      type: object
+      required: [id, projectId, pagePath, visitedAt]
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        pagePath:
+          type: string
+        referrer:
+          type: ["string", "null"]
+        userAgent:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
+        visitedAt:
+          type: string
+
+    OverviewStats:
+      type: object
+      required: [totalEvents, totalMetrics, totalConversations, totalVisits, recentEvents, projectBreakdown]
+      properties:
+        totalEvents:
+          type: integer
+        totalMetrics:
+          type: integer
+        totalConversations:
+          type: integer
+        totalVisits:
+          type: integer
+        recentEvents:
+          type: array
+          items:
+            type: object
+        projectBreakdown:
+          type: array
+          items:
+            type: object
+
+    # ── Ingest bodies ────────────────────────────────────────────────────────
+    IngestOk:
+      type: object
+      required: [ok, id]
+      properties:
+        ok:
+          type: boolean
+        id:
+          type: integer
+
+    IngestEventBody:
+      type: object
+      required: [project_id, event_type, message]
+      properties:
+        project_id:
+          type: integer
+        event_type:
+          type: string
+        message:
+          type: string
+        metadata:
+          type: object
+
+    IngestMetricBody:
+      type: object
+      required: [project_id, metric_name, value]
+      properties:
+        project_id:
+          type: integer
+        metric_name:
+          type: string
+        value:
+          type: number
+        unit:
+          type: string
+
+    IngestConversationBody:
+      type: object
+      required: [project_id, session_id, user_message, assistant_message]
+      properties:
+        project_id:
+          type: integer
+        session_id:
+          type: string
+        user_message:
+          type: string
+        assistant_message:
+          type: string
+        model:
+          type: string
+        tokens_used:
+          type: integer
+
+    IngestWebsiteVisitBody:
+      type: object
+      required: [project_id, page_path]
+      properties:
+        project_id:
+          type: integer
+        page_path:
+          type: string
+        referrer:
+          type: string
+        user_agent:
+          type: string
+        country:
+          type: string
 
     GithubRepoList:
       type: object

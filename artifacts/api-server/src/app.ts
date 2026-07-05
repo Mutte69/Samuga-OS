@@ -76,6 +76,87 @@ await pool.query(`
   CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
 `);
 
+// ── New project tables bootstrap ────────────────────────────────────────────
+const newTables = [
+  `CREATE TABLE IF NOT EXISTS "projects" (
+    "id"          serial        PRIMARY KEY,
+    "name"        text          NOT NULL,
+    "slug"        text          NOT NULL UNIQUE,
+    "description" text,
+    "created_at"  timestamptz   NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "project_metrics" (
+    "id"           serial      PRIMARY KEY,
+    "project_id"   integer     NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    "metric_name"  text        NOT NULL,
+    "value"        numeric     NOT NULL,
+    "unit"         text,
+    "recorded_at"  timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "project_events" (
+    "id"          serial      PRIMARY KEY,
+    "project_id"  integer     NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    "event_type"  text        NOT NULL,
+    "message"     text        NOT NULL,
+    "metadata"    jsonb,
+    "occurred_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "ai_conversations" (
+    "id"                serial      PRIMARY KEY,
+    "project_id"        integer     NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    "session_id"        text        NOT NULL,
+    "user_message"      text        NOT NULL,
+    "assistant_message" text        NOT NULL,
+    "model"             text,
+    "tokens_used"       integer,
+    "started_at"        timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "website_visits" (
+    "id"          serial      PRIMARY KEY,
+    "project_id"  integer     NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    "page_path"   text        NOT NULL,
+    "referrer"    text,
+    "user_agent"  text,
+    "country"     text,
+    "visited_at"  timestamptz NOT NULL DEFAULT now()
+  )`,
+];
+
+for (const ddl of newTables) {
+  try {
+    await pool.query(ddl);
+  } catch (err) {
+    logger.warn({ err }, "Failed to create table (non-fatal)");
+  }
+}
+
+// Seed the five core projects (idempotent)
+const seedProjects = [
+  { name: "Samuga-OS", slug: "samuga-os", description: "Core operating system and orchestration layer" },
+  { name: "samuga-news-bot", slug: "samuga-news-bot", description: "Automated news scraping and summarisation bot" },
+  { name: "samugatravels-miniapp", slug: "samugatravels-miniapp", description: "Telegram mini-app for Samuga Travels bookings" },
+  { name: "Samuga-Travels", slug: "samuga-travels", description: "Travel booking and itinerary management platform" },
+  { name: "Samuga-Media", slug: "samuga-media", description: "Media publishing and content distribution hub" },
+];
+
+for (const p of seedProjects) {
+  try {
+    await pool.query(
+      `INSERT INTO projects (name, slug, description)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (slug) DO NOTHING`,
+      [p.name, p.slug, p.description],
+    );
+  } catch (err) {
+    logger.warn({ err, slug: p.slug }, "Failed to seed project (non-fatal)");
+  }
+}
+
+// Warn if INGEST_API_KEY is not set
+if (!process.env.INGEST_API_KEY) {
+  logger.warn("INGEST_API_KEY is not set — ingest endpoints will return 503");
+}
+
 const PgSession = connectPgSimple(session);
 
 app.use(

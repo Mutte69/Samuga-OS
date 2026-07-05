@@ -11,6 +11,14 @@ import Configs from "@/pages/configs";
 import ApiKeys from "@/pages/api-keys";
 import AiAnalyzer from "@/pages/ai";
 import Repos from "@/pages/repos";
+// New hub pages
+import Overview from "@/pages/overview";
+import Projects from "@/pages/projects";
+import ProjectDetail from "@/pages/project-detail";
+import Errors from "@/pages/errors";
+import Traffic from "@/pages/traffic";
+import AiAnalytics from "@/pages/ai-analytics";
+import DataExplorer from "@/pages/data-explorer";
 import { Shell } from "@/components/layout/Shell";
 
 const queryClient = new QueryClient();
@@ -19,7 +27,31 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Login} />
-      
+
+      {/* Hub pages */}
+      <Route path="/overview">
+        <Shell><Overview /></Shell>
+      </Route>
+      <Route path="/projects/:id">
+        <Shell><ProjectDetail /></Shell>
+      </Route>
+      <Route path="/projects">
+        <Shell><Projects /></Shell>
+      </Route>
+      <Route path="/errors">
+        <Shell><Errors /></Shell>
+      </Route>
+      <Route path="/traffic">
+        <Shell><Traffic /></Shell>
+      </Route>
+      <Route path="/ai-analytics">
+        <Shell><AiAnalytics /></Shell>
+      </Route>
+      <Route path="/data-explorer">
+        <Shell><DataExplorer /></Shell>
+      </Route>
+
+      {/* Legacy pages */}
       <Route path="/dashboard">
         <Shell><Dashboard /></Shell>
       </Route>

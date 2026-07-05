@@ -29,7 +29,7 @@ const LANGUAGE_COLORS: Record<string, string> = {
   CSS: "bg-purple-500",
 };
 
-function LanguageDot({ language }: { language: string | null }) {
+function LanguageDot({ language }: { language: string | null | undefined }) {
   if (!language) return null;
   const color = LANGUAGE_COLORS[language] ?? "bg-slate-400";
   return (

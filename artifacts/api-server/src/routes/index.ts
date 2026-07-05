@@ -8,6 +8,9 @@ import apiKeysRouter from "./api-keys";
 import aiRouter from "./ai";
 import dashboardRouter from "./dashboard";
 import reposRouter from "./repos";
+import ingestRouter from "./ingest";
+import projectsRouter from "./projects";
+import overviewRouter from "./overview";
 
 const router: IRouter = Router();
 
@@ -20,5 +23,8 @@ router.use(apiKeysRouter);
 router.use(aiRouter);
 router.use(dashboardRouter);
 router.use(reposRouter);
+router.use(ingestRouter);
+router.use(projectsRouter);
+router.use(overviewRouter);
 
 export default router;
