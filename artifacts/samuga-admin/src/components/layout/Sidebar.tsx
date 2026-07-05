@@ -10,6 +10,7 @@ import {
   BrainCircuit, 
   LogOut 
 } from "lucide-react";
+import samugaLogo from "@assets/SamugaNewsBot_Profile_1783224477392.png";
 import { Button } from "@/components/ui/button";
 
 const NAV_ITEMS = [
@@ -36,8 +37,8 @@ export function Sidebar() {
   return (
     <div className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col h-screen text-sidebar-foreground">
       <div className="p-6 flex items-center gap-3">
-        <div className="w-8 h-8 bg-primary text-primary-foreground flex items-center justify-center rounded-sm font-bold text-lg leading-none">
-          S
+        <div className="w-8 h-8 flex items-center justify-center">
+          <img src={samugaLogo} alt="Samuga AI" className="w-8 h-8 object-contain" />
         </div>
         <div>
           <h1 className="font-bold tracking-tight text-sm text-white">SAMUGA AI</h1>

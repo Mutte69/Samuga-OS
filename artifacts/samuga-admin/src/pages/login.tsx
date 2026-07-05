@@ -4,7 +4,7 @@ import { useLogin } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { BrainCircuit } from "lucide-react";
+import samugaLogo from "@assets/SamugaNewsBot_Profile_1783224477392.png";
 import { toast } from "sonner";
 
 export default function Login() {
@@ -32,8 +32,8 @@ export default function Login() {
       
       <Card className="w-full max-w-md z-10 border-sidebar-border bg-sidebar-accent shadow-2xl">
         <CardHeader className="space-y-4 items-center pt-10">
-          <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
-            <BrainCircuit className="w-8 h-8 text-white" />
+          <div className="w-20 h-20 flex items-center justify-center">
+            <img src={samugaLogo} alt="Samuga AI" className="w-20 h-20 object-contain drop-shadow-[0_0_12px_rgba(14,165,233,0.5)]" />
           </div>
           <div className="text-center space-y-1">
             <h1 className="text-2xl font-bold tracking-tight text-white">SAMUGA AI</h1>
