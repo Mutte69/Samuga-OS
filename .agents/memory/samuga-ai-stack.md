@@ -26,10 +26,11 @@ description: Auth pattern, env var enforcement, and AI integration choices for S
 
 ## Hub self-telemetry (api-server → Data Master Hub ingest)
 - Env vars: `SAMUGA_OS_INGEST_URL`, `SAMUGA_OS_INGEST_KEY`, `PROJECT_NAME` (all read at call-time, never at module load).
-- Silent no-op in dev (vars absent). Never throws. 5s AbortSignal.timeout.
-- Lifecycle events: `service_started` (startup), `service_stopped` (SIGTERM/SIGINT), `hub_integration_test` (3s after start, timer stored + cleared on shutdown).
+- **CRITICAL PATH**: `SAMUGA_OS_INGEST_URL` is the bare service root (e.g. `https://hub.railway.app`). `telemetry.ts` appends `/api/ingest/event` etc. Setting it to `https://hub.railway.app/api/ingest` would double the prefix. Setting it with a trailing slash is safe (stripped by `replace(/\/+$/, "")`).
+- `telemetry.probe()` — awaitable startup check: logs env var presence (never values), shows exact target URL, sends `hub_integration_test` event, logs Hub response including status + body on failure.
+- Lifecycle events: `service_started` (after probe), `service_stopped` (SIGTERM/SIGINT).
 - Per-request metrics in app.ts middleware: `requests_handled`, `response_time_ms`, `successful_actions`, `failed_actions` (5xx only).
 - Per-ingest metrics in ingest.ts: `items_ingested`, `{events/metrics/conversations/visits}_ingested`, `ingest_duration_ms`, `articles_processed` (events), `articles_published` (metrics).
 - SSE queue size in live.ts: `queue_size` metric emitted on every connect/disconnect.
 
-**Why:** Hub needs to monitor its own health. Metrics map "articles processed/published" concepts to ingest operations.
+**Why:** Root cause of "0 events in Hub" was path mismatch — old code posted to `/event` (404), fix posts to `/api/ingest/event`.
