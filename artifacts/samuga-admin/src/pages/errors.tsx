@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
+import { useLive } from "@/context/LiveContext";
 
 
 interface Project { id: number; name: string; slug: string; }
@@ -39,10 +40,22 @@ export default function Errors() {
   const [selectedProject, setSelectedProject] = useState<string>("");
   const { data: projectsData } = useProjects();
   const { data: eventsData, isLoading } = useProjectEvents(selectedProject);
+  const queryClient = useQueryClient();
+  const { subscribe } = useLive();
 
   const projects = projectsData?.projects ?? [];
   const errors = (eventsData?.events ?? []).filter((e) => e.eventType === "error");
   const projectMap = new Map(projects.map((p) => [p.id, p]));
+
+  // Invalidate events for the selected project when a live event arrives for it
+  useEffect(() => {
+    if (!selectedProject) return;
+    return subscribe((payload) => {
+      if (payload.type === "event" && String(payload.projectId) === selectedProject) {
+        queryClient.invalidateQueries({ queryKey: ["project", selectedProject, "events"] });
+      }
+    });
+  }, [subscribe, queryClient, selectedProject]);
 
   return (
     <div className="p-8 space-y-6">

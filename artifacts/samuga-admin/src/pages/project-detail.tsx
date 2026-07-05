@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
+import { useLive } from "@/context/LiveContext";
 
 
 interface Project { id: number; name: string; slug: string; description: string | null; createdAt: string; }
@@ -153,6 +154,21 @@ export default function ProjectDetail() {
   const { data: projectsData } = useProjects();
   const project = projectsData?.projects.find((p) => String(p.id) === id);
   const [tab, setTab] = useState<Tab>("events");
+  const queryClient = useQueryClient();
+  const { subscribe } = useLive();
+
+  // Invalidate the currently-viewed tab's query when a relevant live update arrives
+  useEffect(() => {
+    if (!id) return;
+    return subscribe((payload) => {
+      if (String(payload.projectId) !== id) return;
+      if (payload.type === "event" && (tab === "events")) {
+        queryClient.invalidateQueries({ queryKey: ["project", id, "events"] });
+      } else if (payload.type === "metric" && tab === "metrics") {
+        queryClient.invalidateQueries({ queryKey: ["project", id, "metrics"] });
+      }
+    });
+  }, [subscribe, queryClient, id, tab]);
 
   return (
     <div className="p-8 space-y-6">

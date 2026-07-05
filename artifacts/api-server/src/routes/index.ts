@@ -11,6 +11,7 @@ import reposRouter from "./repos";
 import ingestRouter from "./ingest";
 import projectsRouter from "./projects";
 import overviewRouter from "./overview";
+import liveRouter from "./live";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(reposRouter);
 router.use(ingestRouter);
 router.use(projectsRouter);
 router.use(overviewRouter);
+router.use(liveRouter);
 
 export default router;

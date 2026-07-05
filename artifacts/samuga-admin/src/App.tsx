@@ -20,6 +20,7 @@ import Traffic from "@/pages/traffic";
 import AiAnalytics from "@/pages/ai-analytics";
 import DataExplorer from "@/pages/data-explorer";
 import { Shell } from "@/components/layout/Shell";
+import { LiveProvider } from "@/context/LiveContext";
 
 const queryClient = new QueryClient();
 
@@ -82,10 +83,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-        <Router />
-      </WouterRouter>
-      <Toaster theme="dark" position="top-right" />
+      <LiveProvider>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+          <Router />
+        </WouterRouter>
+        <Toaster theme="dark" position="top-right" />
+      </LiveProvider>
     </QueryClientProvider>
   );
 }

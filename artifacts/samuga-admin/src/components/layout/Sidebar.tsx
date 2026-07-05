@@ -18,6 +18,7 @@ import {
 import samugaLogo from "@assets/SamugaNewsBot_Profile_1783224477392.png";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useLive } from "@/context/LiveContext";
 
 const HUB_NAV = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
@@ -59,6 +60,35 @@ function NavItem({ href, label, icon: Icon, location }: { href: string; label: s
   );
 }
 
+function LiveIndicator() {
+  const { isLive } = useLive();
+  return (
+    <div className="flex items-center gap-1.5" title={isLive ? "Live feed connected" : "Live feed disconnected"}>
+      <span
+        className="relative flex h-2 w-2"
+        aria-label={isLive ? "live" : "offline"}
+      >
+        {isLive && (
+          <span
+            className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+            style={{ background: "#22d3ee" }}
+          />
+        )}
+        <span
+          className="relative inline-flex rounded-full h-2 w-2"
+          style={{ background: isLive ? "#22d3ee" : "rgba(148,163,184,0.4)" }}
+        />
+      </span>
+      <span
+        className="text-[9px] uppercase font-mono tracking-widest font-bold"
+        style={{ color: isLive ? "#22d3ee" : "rgba(148,163,184,0.4)" }}
+      >
+        {isLive ? "LIVE" : "OFF"}
+      </span>
+    </div>
+  );
+}
+
 export function Sidebar() {
   const [location, setLocation] = useLocation();
   const logout = useLogout();
@@ -88,12 +118,13 @@ export function Sidebar() {
           style={{ background: "rgba(34,211,238,0.1)", border: "1px solid rgba(34,211,238,0.3)" }}>
           <img src={samugaLogo} alt="Samuga AI" className="w-7 h-7 object-contain" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="font-bold tracking-tight text-sm text-white leading-tight">SAMUGA AI</h1>
           <p className="text-[9px] uppercase font-mono tracking-widest" style={{ color: "rgba(34,211,238,0.7)" }}>
             Data Master Hub
           </p>
         </div>
+        <LiveIndicator />
       </div>
 
       {/* Hub navigation */}

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, projectEventsTable, projectMetricsTable, aiConversationsTable, websiteVisitsTable } from "@workspace/db";
 import { requireIngestKey } from "../middleware/requireIngestKey";
+import { eventBus } from "../lib/eventBus";
 
 const router: IRouter = Router();
 
@@ -15,6 +16,10 @@ router.post("/ingest/event", requireIngestKey, async (req, res): Promise<void> =
     .insert(projectEventsTable)
     .values({ projectId: project_id, eventType: event_type, message, metadata: metadata ?? null })
     .returning();
+
+  // Broadcast to live SSE clients
+  eventBus.emit("live", { type: "event", projectId: project_id, data: row });
+
   res.status(201).json({ ok: true, id: row.id });
 });
 
@@ -29,6 +34,10 @@ router.post("/ingest/metric", requireIngestKey, async (req, res): Promise<void> 
     .insert(projectMetricsTable)
     .values({ projectId: project_id, metricName: metric_name, value: String(value), unit: unit ?? null })
     .returning();
+
+  // Broadcast to live SSE clients
+  eventBus.emit("live", { type: "metric", projectId: project_id, data: row });
+
   res.status(201).json({ ok: true, id: row.id });
 });
 

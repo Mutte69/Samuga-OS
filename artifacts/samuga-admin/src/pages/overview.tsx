@@ -1,8 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, MessageSquare, Globe, Zap } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-
+import { useLive } from "@/context/LiveContext";
 
 interface OverviewStats {
   totalEvents: number;
@@ -65,6 +65,15 @@ const CARD_STYLE = {
 
 export default function Overview() {
   const { data: stats, isLoading } = useOverviewStats();
+  const queryClient = useQueryClient();
+  const { subscribe } = useLive();
+
+  // Invalidate overview on any live event or metric arriving
+  useEffect(() => {
+    return subscribe(() => {
+      queryClient.invalidateQueries({ queryKey: ["overview"] });
+    });
+  }, [subscribe, queryClient]);
 
   if (isLoading || !stats) {
     return (
