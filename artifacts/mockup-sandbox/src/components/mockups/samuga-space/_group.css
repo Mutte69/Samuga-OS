@@ -1,0 +1,28 @@
+/* ── Samuga Space Theme – Group CSS ── */
+
+/* Animated watermark logo */
+.samuga-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -55%);
+  width: 520px;
+  height: 520px;
+  background-image: url("/__mockup/images/samuga-logo.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.09;
+  pointer-events: none;
+  animation: logoFloat 14s ease-in-out infinite;
+  filter: grayscale(30%) blur(0.5px);
+}
+
+/* Subtle pulse + micro-rotation */
+@keyframes logoFloat {
+  0%   { opacity: 0.09; transform: translate(-50%, -55%) scale(1)    rotate(0deg);   }
+  25%  { opacity: 0.11; transform: translate(-50%, -55%) scale(1.015) rotate(0.4deg); }
+  50%  { opacity: 0.09; transform: translate(-50%, -55%) scale(1)    rotate(0deg);   }
+  75%  { opacity: 0.11; transform: translate(-50%, -55%) scale(1.015) rotate(-0.4deg);}
+  100% { opacity: 0.09; transform: translate(-50%, -55%) scale(1)    rotate(0deg);   }
+}
