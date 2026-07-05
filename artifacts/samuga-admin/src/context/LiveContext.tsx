@@ -32,6 +32,24 @@ export function useLive() {
 const SSE_URL = "/api/v1/live";
 const INITIAL_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 30_000;
+const BASE_TITLE = document.title || "Samuga Admin";
+
+/** Request notification permission once, silently. */
+async function requestNotificationPermission(): Promise<boolean> {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") return false;
+  const result = await Notification.requestPermission();
+  return result === "granted";
+}
+
+/** Fire a browser Notification if permitted. */
+function fireNotification(title: string, body: string) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const n = new Notification(title, { body, icon: "/favicon.ico", tag: "samuga-error" });
+  // Auto-close after 8 s so it doesn't linger forever
+  setTimeout(() => n.close(), 8_000);
+}
 
 export function LiveProvider({ children }: { children: ReactNode }) {
   const [isLive, setIsLive] = useState(false);
@@ -39,6 +57,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const esRef = useRef<EventSource | null>(null);
   const retryMsRef = useRef(INITIAL_RETRY_MS);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Unread error count while the tab is hidden
+  const unreadErrorsRef = useRef(0);
 
   // Track auth state — treat as authenticated only when we have user data
   const { data: meData, isSuccess: isAuthenticated } = useGetMe({
@@ -50,6 +71,18 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const subscribe = useCallback((listener: Listener) => {
     listenersRef.current.add(listener);
     return () => { listenersRef.current.delete(listener); };
+  }, []);
+
+  // Clear unread badge when the user returns to the tab
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (!document.hidden) {
+        unreadErrorsRef.current = 0;
+        document.title = BASE_TITLE;
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   useEffect(() => {
@@ -65,6 +98,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       setIsLive(false);
       return;
     }
+
+    // Ask for notification permission in the background (non-blocking)
+    void requestNotificationPermission();
 
     let destroyed = false;
     // Reset backoff whenever we (re)connect due to a fresh login
@@ -117,11 +153,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     };
   }, [isAuthenticated]);
 
-  // Fire toasts when live events arrive
+  // Fire toasts (and background alerts) when live events arrive
   useEffect(() => {
     const unsub = subscribe((payload) => {
       if (payload.type !== "event") return;
-      if (activeToastCount >= MAX_TOASTS) return;
 
       const data = payload.data;
       const eventType = typeof data.eventType === "string" ? data.eventType : "";
@@ -130,8 +165,19 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       const message =
         typeof data.message === "string" ? data.message : eventType || "New event";
 
-      activeToastCount++;
+      // ── Background alerts (only for errors, only when tab is hidden) ──
+      if (eventType === "error" && document.hidden) {
+        unreadErrorsRef.current += 1;
+        const count = unreadErrorsRef.current;
+        document.title = `(${count}) ${BASE_TITLE}`;
+        // Fire a browser notification; silently no-ops if permission denied
+        fireNotification(`${projectName} error`, message);
+      }
 
+      // ── Toasts (always, regardless of visibility) ──
+      if (activeToastCount >= MAX_TOASTS) return;
+
+      activeToastCount++;
       const onDismiss = () => { activeToastCount = Math.max(0, activeToastCount - 1); };
 
       if (eventType === "error") {
