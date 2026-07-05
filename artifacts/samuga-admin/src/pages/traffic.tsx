@@ -17,11 +17,30 @@ const CARD_STYLE = {
   backdropFilter: "blur(12px)",
 };
 
-/** Aggregate visits by ISO date YYYY-MM-DD */
-function groupByDay(visits: WebsiteVisit[]): Record<string, number> {
+type DateRange = 7 | 30 | 90;
+const DATE_RANGE_OPTIONS: { label: string; days: DateRange }[] = [
+  { label: "Last 7 days", days: 7 },
+  { label: "Last 30 days", days: 30 },
+  { label: "Last 90 days", days: 90 },
+];
+
+/** ISO date string for N days ago (inclusive lower bound) */
+function daysAgoISO(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - (days - 1));
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Aggregate visits by ISO date YYYY-MM-DD, optionally within a date window */
+function groupByDay(
+  visits: WebsiteVisit[],
+  fromDate?: string,
+): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const v of visits) {
     const day = new Date(v.visitedAt).toISOString().slice(0, 10);
+    if (fromDate && day < fromDate) continue;
     counts[day] = (counts[day] ?? 0) + 1;
   }
   return counts;
@@ -63,6 +82,7 @@ function buildChartData(
 
 export default function Traffic() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | "all">("all");
+  const [dateRange, setDateRange] = useState<DateRange>(30);
 
   // ── 1. Fetch projects ──────────────────────────────────────────────────
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
@@ -80,14 +100,17 @@ export default function Traffic() {
     })),
   });
 
-  // ── 3. Derive chart data from stable query results ─────────────────────
+  // ── 3. Derive filtered chart data ──────────────────────────────────────
+  const fromDate = daysAgoISO(dateRange);
+
   const visitsByProject: Record<number, Record<string, number>> = {};
   const rawVisitsByProject: Record<number, WebsiteVisit[]> = {};
   for (let i = 0; i < projects.length; i++) {
     const result = visitQueries[i];
     if (result?.data?.visits) {
-      visitsByProject[projects[i].id] = groupByDay(result.data.visits);
       rawVisitsByProject[projects[i].id] = result.data.visits;
+      // filtered by date range
+      visitsByProject[projects[i].id] = groupByDay(result.data.visits, fromDate);
     }
   }
 
@@ -102,11 +125,15 @@ export default function Traffic() {
     projects.some((p) => (row[p.name] as number) > 0),
   );
 
-  // ── 4. Top pages for selected project ─────────────────────────────────
-  const visitsForTopPages: WebsiteVisit[] =
+  // ── 4. Top pages for selected project (date-range filtered) ────────────
+  const rawForTopPages: WebsiteVisit[] =
     selectedProjectId === "all"
       ? Object.values(rawVisitsByProject).flat()
       : (rawVisitsByProject[selectedProjectId as number] ?? []);
+
+  const visitsForTopPages = rawForTopPages.filter(
+    (v) => new Date(v.visitedAt).toISOString().slice(0, 10) >= fromDate,
+  );
 
   const topPages = topPagesByPath(visitsForTopPages);
 
@@ -122,6 +149,32 @@ export default function Traffic() {
         </div>
       </div>
 
+      {/* Date-range preset buttons */}
+      <div className="flex items-center gap-2">
+        {DATE_RANGE_OPTIONS.map(({ label, days }) => (
+          <button
+            key={days}
+            onClick={() => setDateRange(days)}
+            className="px-4 py-1.5 rounded-lg text-sm font-mono transition-colors"
+            style={
+              dateRange === days
+                ? {
+                    background: "rgba(34,211,238,0.15)",
+                    border: "1px solid rgba(34,211,238,0.6)",
+                    color: "#22d3ee",
+                  }
+                : {
+                    background: "rgba(5,14,30,0.5)",
+                    border: "1px solid rgba(34,211,238,0.18)",
+                    color: "rgba(148,163,184,0.8)",
+                  }
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <div style={CARD_STYLE} className="rounded-xl p-5">
@@ -130,6 +183,9 @@ export default function Traffic() {
           </p>
           <p className="text-3xl font-bold font-mono text-white">
             {isLoading ? "—" : totalVisits.toLocaleString()}
+          </p>
+          <p className="text-xs mt-1 font-mono" style={{ color: "rgba(148,163,184,0.5)" }}>
+            Last {dateRange} days
           </p>
         </div>
         <div style={CARD_STYLE} className="rounded-xl p-5">
@@ -142,7 +198,12 @@ export default function Traffic() {
 
       {/* Line chart — one line per project */}
       <div style={CARD_STYLE} className="rounded-xl p-6">
-        <h2 className="text-base font-semibold text-white mb-4">Daily Visits by Project</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-white">Daily Visits by Project</h2>
+          <span className="text-xs font-mono" style={{ color: "rgba(148,163,184,0.5)" }}>
+            {fromDate} → today
+          </span>
+        </div>
         {isLoading ? (
           <div className="py-12 flex justify-center">
             <div
@@ -263,7 +324,7 @@ export default function Traffic() {
           <thead>
             <tr className="border-b" style={{ borderColor: "rgba(34,211,238,0.08)" }}>
               <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Project</th>
-              <th className="px-6 py-3 text-right text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Total Visits</th>
+              <th className="px-6 py-3 text-right text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Visits (window)</th>
               <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Color</th>
             </tr>
           </thead>
