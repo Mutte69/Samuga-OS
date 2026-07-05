@@ -4,6 +4,7 @@ import { db, projectEventsTable, projectMetricsTable, aiConversationsTable, webs
 import { requireIngestKey } from "../middleware/requireIngestKey";
 import { ingestRateLimit } from "../middleware/ingestRateLimit";
 import { eventBus } from "../lib/eventBus";
+import { telemetry } from "../lib/telemetry";
 import geoip from "geoip-lite";
 
 /** Resolve a two-letter country code from a request IP, or return null. */
@@ -106,6 +107,7 @@ router.post("/ingest/event", requireIngestKey, async (req, res): Promise<void> =
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
+  const ingestStart = Date.now();
   let row: typeof projectEventsTable.$inferSelect;
   try {
     [row] = await db
@@ -114,11 +116,18 @@ router.post("/ingest/event", requireIngestKey, async (req, res): Promise<void> =
       .returning();
   } catch (err) {
     if (isForeignKeyViolation(err)) {
+      telemetry.metric("failed_actions", 1, "count");
       res.status(404).json({ error: "Project not found" });
       return;
     }
     throw err;
   }
+
+  const ingestDuration = Date.now() - ingestStart;
+  telemetry.metric("items_ingested", 1, "count");
+  telemetry.metric("events_ingested", 1, "count");
+  telemetry.metric("articles_processed", 1, "count");
+  telemetry.metric("ingest_duration_ms", ingestDuration, "ms");
 
   // Broadcast to live SSE clients
   eventBus.emit("live", { type: "event", projectId: resolved.id, data: row });
@@ -138,6 +147,7 @@ router.post("/ingest/metric", requireIngestKey, async (req, res): Promise<void> 
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
+  const ingestStart = Date.now();
   let row: typeof projectMetricsTable.$inferSelect;
   try {
     [row] = await db
@@ -146,11 +156,18 @@ router.post("/ingest/metric", requireIngestKey, async (req, res): Promise<void> 
       .returning();
   } catch (err) {
     if (isForeignKeyViolation(err)) {
+      telemetry.metric("failed_actions", 1, "count");
       res.status(404).json({ error: "Project not found" });
       return;
     }
     throw err;
   }
+
+  const ingestDuration = Date.now() - ingestStart;
+  telemetry.metric("items_ingested", 1, "count");
+  telemetry.metric("metrics_recorded", 1, "count");
+  telemetry.metric("articles_published", 1, "count");
+  telemetry.metric("ingest_duration_ms", ingestDuration, "ms");
 
   // Broadcast to live SSE clients
   eventBus.emit("live", { type: "metric", projectId: resolved.id, data: row });
@@ -174,6 +191,7 @@ router.post("/ingest/conversation", requireIngestKey, async (req, res): Promise<
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
+  const ingestStart = Date.now();
   let row: typeof aiConversationsTable.$inferSelect;
   try {
     [row] = await db
@@ -189,11 +207,21 @@ router.post("/ingest/conversation", requireIngestKey, async (req, res): Promise<
       .returning();
   } catch (err) {
     if (isForeignKeyViolation(err)) {
+      telemetry.metric("failed_actions", 1, "count");
       res.status(404).json({ error: "Project not found" });
       return;
     }
     throw err;
   }
+
+  const ingestDuration = Date.now() - ingestStart;
+  telemetry.metric("items_ingested", 1, "count");
+  telemetry.metric("conversations_recorded", 1, "count");
+  telemetry.metric("ingest_duration_ms", ingestDuration, "ms");
+  if (typeof tokens_used === "number") {
+    telemetry.metric("tokens_used", tokens_used, "tokens");
+  }
+
   res.status(201).json({ ok: true, id: row.id });
 });
 
@@ -216,6 +244,7 @@ router.post("/ingest/website-visit", requireIngestKey, async (req, res): Promise
       ? country
       : countryFromRequest(req);
 
+  const ingestStart = Date.now();
   let row: typeof websiteVisitsTable.$inferSelect;
   try {
     [row] = await db
@@ -230,11 +259,18 @@ router.post("/ingest/website-visit", requireIngestKey, async (req, res): Promise
       .returning();
   } catch (err) {
     if (isForeignKeyViolation(err)) {
+      telemetry.metric("failed_actions", 1, "count");
       res.status(404).json({ error: "Project not found" });
       return;
     }
     throw err;
   }
+
+  const ingestDuration = Date.now() - ingestStart;
+  telemetry.metric("items_ingested", 1, "count");
+  telemetry.metric("visits_recorded", 1, "count");
+  telemetry.metric("ingest_duration_ms", ingestDuration, "ms");
+
   res.status(201).json({ ok: true, id: row.id });
 });
 

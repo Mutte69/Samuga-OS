@@ -3,8 +3,14 @@ import { requireAdminSession } from "../middlewares/session-auth";
 import { eventBus, type LiveEvent } from "../lib/eventBus";
 import type { RateLimitEvent } from "../lib/rateLimitStore";
 import { logger } from "../lib/logger";
+import { telemetry } from "../lib/telemetry";
 
 const router: IRouter = Router();
+
+// ── Active SSE connection counter ────────────────────────────────────────────
+// Used to report queue_size to the Hub so operators can see how many admin
+// clients are currently connected.
+let activeConnections = 0;
 
 // GET /v1/live — Server-Sent Events stream for authenticated admin clients
 router.get("/v1/live", requireAdminSession, (req, res): void => {
@@ -13,6 +19,9 @@ router.get("/v1/live", requireAdminSession, (req, res): void => {
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no"); // disable nginx buffering
   res.flushHeaders();
+
+  activeConnections++;
+  telemetry.metric("queue_size", activeConnections, "connections");
 
   // Send an initial "connected" event so the client knows the stream is alive
   res.write(`event: connected\ndata: {}\n\n`);
@@ -43,6 +52,8 @@ router.get("/v1/live", requireAdminSession, (req, res): void => {
 
   req.on("close", () => {
     clearInterval(heartbeat);
+    activeConnections = Math.max(0, activeConnections - 1);
+    telemetry.metric("queue_size", activeConnections, "connections");
     eventBus.off("live", onLive);
     eventBus.off("rate_limit", onRateLimit);
     logger.debug("SSE client disconnected");

@@ -23,3 +23,13 @@ description: Auth pattern, env var enforcement, and AI integration choices for S
 - Design subagent stripped this; had to re-add it post-build.
 
 **Why:** Without base, routes break in non-root deployments.
+
+## Hub self-telemetry (api-server → Data Master Hub ingest)
+- Env vars: `SAMUGA_OS_INGEST_URL`, `SAMUGA_OS_INGEST_KEY`, `PROJECT_NAME` (all read at call-time, never at module load).
+- Silent no-op in dev (vars absent). Never throws. 5s AbortSignal.timeout.
+- Lifecycle events: `service_started` (startup), `service_stopped` (SIGTERM/SIGINT), `hub_integration_test` (3s after start, timer stored + cleared on shutdown).
+- Per-request metrics in app.ts middleware: `requests_handled`, `response_time_ms`, `successful_actions`, `failed_actions` (5xx only).
+- Per-ingest metrics in ingest.ts: `items_ingested`, `{events/metrics/conversations/visits}_ingested`, `ingest_duration_ms`, `articles_processed` (events), `articles_published` (metrics).
+- SSE queue size in live.ts: `queue_size` metric emitted on every connect/disconnect.
+
+**Why:** Hub needs to monitor its own health. Metrics map "articles processed/published" concepts to ingest operations.
