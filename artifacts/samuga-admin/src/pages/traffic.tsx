@@ -117,15 +117,65 @@ function topPagesByPath(visits: WebsiteVisit[]): Array<{ path: string; count: nu
 }
 
 /** Aggregate visits by referrer; null/empty → "Direct" */
-function topReferrers(visits: WebsiteVisit[]): Array<{ label: string; count: number; share: number }> {
-  const counts: Record<string, number> = {};
+function topReferrers(
+  visits: WebsiteVisit[],
+): Array<{ label: string; count: number; share: number; avgPages: number }> {
+  // ── Session approximation ──────────────────────────────────────────────
+  // Group visits into sessions using (userAgent) + 30-minute inactivity window.
+  // A session's "referrer" is the referrer of its first visit.
+  const SESSION_GAP_MS = 30 * 60 * 1000;
+
+  // Sort by userAgent bucket then time
+  const sorted = [...visits].sort((a, b) => {
+    const ua = (a.userAgent ?? "").localeCompare(b.userAgent ?? "");
+    if (ua !== 0) return ua;
+    return new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime();
+  });
+
+  // Each session: { referrerLabel, pages: Set<pagePath> }
+  type Session = { referrer: string; pages: Set<string> };
+  const sessions: Session[] = [];
+  let curSession: Session | null = null;
+  let curUA = "";
+  let lastTime = 0;
+
+  for (const v of sorted) {
+    const ua = v.userAgent ?? "";
+    const t = new Date(v.visitedAt).getTime();
+    const label = v.referrer?.trim() || "Direct";
+
+    if (!curSession || ua !== curUA || t - lastTime > SESSION_GAP_MS) {
+      curSession = { referrer: label, pages: new Set() };
+      sessions.push(curSession);
+      curUA = ua;
+    }
+    curSession.pages.add(v.pagePath || "/");
+    lastTime = t;
+  }
+
+  // ── Aggregate per referrer ─────────────────────────────────────────────
+  const countMap: Record<string, number> = {};
+  const pagesSum: Record<string, number> = {};
+  const sessCount: Record<string, number> = {};
+
   for (const v of visits) {
     const label = v.referrer?.trim() || "Direct";
-    counts[label] = (counts[label] ?? 0) + 1;
+    countMap[label] = (countMap[label] ?? 0) + 1;
   }
-  const total = Object.values(counts).reduce((s, n) => s + n, 0);
-  return Object.entries(counts)
-    .map(([label, count]) => ({ label, count, share: total > 0 ? (count / total) * 100 : 0 }))
+  for (const s of sessions) {
+    const label = s.referrer;
+    sessCount[label] = (sessCount[label] ?? 0) + 1;
+    pagesSum[label] = (pagesSum[label] ?? 0) + s.pages.size;
+  }
+
+  const total = Object.values(countMap).reduce((s, n) => s + n, 0);
+  return Object.entries(countMap)
+    .map(([label, count]) => ({
+      label,
+      count,
+      share: total > 0 ? (count / total) * 100 : 0,
+      avgPages: sessCount[label] ? pagesSum[label] / sessCount[label] : 1,
+    }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 }
@@ -455,7 +505,7 @@ export default function Traffic() {
           <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(34,211,238,0.12)" }}>
             <h2 className="text-base font-semibold text-white">Top Referrers</h2>
             <p className="text-xs font-mono mt-0.5" style={{ color: "rgba(148,163,184,0.5)" }}>
-              Where visitors are coming from
+              Visit share &amp; avg pages/session per source
             </p>
           </div>
           {isLoading ? (
@@ -465,20 +515,61 @@ export default function Traffic() {
           ) : referrers.length === 0 ? (
             <p className="text-slate-500 text-sm text-center py-8">No referrer data yet.</p>
           ) : (
-            <ul className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-              {referrers.map((r) => (
-                <li key={r.label} className="px-6 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors">
-                  <span className="flex-1 text-xs font-mono text-slate-200 truncate" title={r.label}>{r.label}</span>
-                  <span className="text-xs font-mono text-slate-400 w-10 text-right">{r.count.toLocaleString()}</span>
-                  <div className="w-24 flex items-center gap-1.5">
-                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
-                      <div className="h-full rounded-full" style={{ width: `${r.share}%`, background: "#22d3ee" }} />
-                    </div>
-                    <span className="text-xs font-mono w-9 text-right" style={{ color: "#22d3ee" }}>{r.share.toFixed(1)}%</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <>
+              {/* Column headers */}
+              <div
+                className="px-6 py-1.5 flex items-center gap-3 text-xs font-mono"
+                style={{ color: "rgba(148,163,184,0.45)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+              >
+                <span className="flex-1">Source</span>
+                <span className="w-10 text-right">Visits</span>
+                <span className="w-24 text-right">Share</span>
+                <span
+                  className="w-16 text-right"
+                  title="Avg pages viewed per session (approximated by user-agent + 30 min inactivity window)"
+                >
+                  Pg/Sess
+                </span>
+              </div>
+              <ul className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+                {referrers.map((r) => {
+                  // Colour-code engagement: ≥2 pages = good (green tint), 1 = neutral
+                  const engagementColor =
+                    r.avgPages >= 2.5
+                      ? "#34d399"
+                      : r.avgPages >= 1.5
+                        ? "#22d3ee"
+                        : "rgba(148,163,184,0.6)";
+
+                  return (
+                    <li key={r.label} className="px-6 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors">
+                      <span className="flex-1 text-xs font-mono text-slate-200 truncate" title={r.label}>
+                        {r.label}
+                      </span>
+                      <span className="text-xs font-mono text-slate-400 w-10 text-right">
+                        {r.count.toLocaleString()}
+                      </span>
+                      <div className="w-24 flex items-center gap-1.5">
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                          <div className="h-full rounded-full" style={{ width: `${r.share}%`, background: "#22d3ee" }} />
+                        </div>
+                        <span className="text-xs font-mono w-9 text-right" style={{ color: "#22d3ee" }}>
+                          {r.share.toFixed(1)}%
+                        </span>
+                      </div>
+                      {/* Avg pages per session */}
+                      <span
+                        className="text-xs font-mono w-16 text-right tabular-nums"
+                        style={{ color: engagementColor }}
+                        title={`~${r.avgPages.toFixed(2)} pages per session`}
+                      >
+                        {r.avgPages.toFixed(1)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </div>
 
