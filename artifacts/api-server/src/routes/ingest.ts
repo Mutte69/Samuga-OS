@@ -32,6 +32,16 @@ async function resolveProjectId(
   return { error: "Required: project_id (number) or project_slug (string)", status: 400 };
 }
 
+// ── GET /ingest/projects ────────────────────────────────────────────────────
+// Returns all projects so bots can enumerate available slugs.
+router.get("/ingest/projects", requireIngestKey, async (_req, res): Promise<void> => {
+  const projects = await db
+    .select({ id: projectsTable.id, name: projectsTable.name, slug: projectsTable.slug })
+    .from(projectsTable)
+    .orderBy(projectsTable.slug);
+  res.json(projects);
+});
+
 // ── GET /ingest/project?slug=<slug> ─────────────────────────────────────────
 // Public lookup (ingest key required) — bots use this to resolve a slug to an ID.
 router.get("/ingest/project", requireIngestKey, async (req, res): Promise<void> => {
