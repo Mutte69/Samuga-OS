@@ -24,6 +24,8 @@ tags:
     description: AI analysis engine
   - name: dashboard
     description: Dashboard overview statistics
+  - name: repos
+    description: GitHub repository manager (read-only)
 
 paths:
   /healthz:
@@ -381,6 +383,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ── GitHub Repos ──────────────────────────────────────────────────────────
+  /repos:
+    get:
+      operationId: listRepos
+      tags: [repos]
+      summary: List GitHub repositories for the configured owner (read-only)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Repository list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubRepoList"
+        "503":
+          description: GITHUB_OWNER not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: GitHub API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ── AI Engine ────────────────────────────────────────────────────────────
   /v1/ai/analyze:
     post:
@@ -695,3 +725,36 @@ components:
           type: string
         metadata:
           type: ["object", "null"]
+
+    # ── GitHub Repos ──────────────────────────────────────────────────────────
+    GithubRepo:
+      type: object
+      required: [name, full_name, html_url, default_branch, private, updated_at]
+      properties:
+        name:
+          type: string
+        full_name:
+          type: string
+        html_url:
+          type: string
+        description:
+          type: ["string", "null"]
+        default_branch:
+          type: string
+        private:
+          type: boolean
+        updated_at:
+          type: string
+        language:
+          type: ["string", "null"]
+
+    GithubRepoList:
+      type: object
+      required: [repos, total]
+      properties:
+        repos:
+          type: array
+          items:
+            $ref: "#/components/schemas/GithubRepo"
+        total:
+          type: integer

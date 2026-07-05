@@ -200,6 +200,24 @@ export interface AnalyzeResult {
   metadata?: AnalyzeResultMetadata;
 }
 
+export interface GithubRepo {
+  name: string;
+  full_name: string;
+  html_url: string;
+  /** @nullable */
+  description?: string | null;
+  default_branch: string;
+  private: boolean;
+  updated_at: string;
+  /** @nullable */
+  language?: string | null;
+}
+
+export interface GithubRepoList {
+  repos: GithubRepo[];
+  total: number;
+}
+
 export type ListLogsParams = {
 /**
  * Filter by source repository name

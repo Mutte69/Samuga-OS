@@ -7,6 +7,7 @@ import configsRouter from "./configs";
 import apiKeysRouter from "./api-keys";
 import aiRouter from "./ai";
 import dashboardRouter from "./dashboard";
+import reposRouter from "./repos";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(configsRouter);
 router.use(apiKeysRouter);
 router.use(aiRouter);
 router.use(dashboardRouter);
+router.use(reposRouter);
 
 export default router;

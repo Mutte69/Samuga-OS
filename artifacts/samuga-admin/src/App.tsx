@@ -10,6 +10,7 @@ import Analytics from "@/pages/analytics";
 import Configs from "@/pages/configs";
 import ApiKeys from "@/pages/api-keys";
 import AiAnalyzer from "@/pages/ai";
+import Repos from "@/pages/repos";
 import { Shell } from "@/components/layout/Shell";
 
 const queryClient = new QueryClient();
@@ -37,7 +38,10 @@ function Router() {
       <Route path="/ai">
         <Shell><AiAnalyzer /></Shell>
       </Route>
-      
+      <Route path="/repos">
+        <Shell><Repos /></Shell>
+      </Route>
+
       <Route component={NotFound} />
     </Switch>
   );

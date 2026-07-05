@@ -30,6 +30,7 @@ import type {
   ConfigInput,
   DashboardStats,
   ErrorResponse,
+  GithubRepoList,
   HealthStatus,
   ListAnalyticsParams,
   ListLogsParams,
@@ -1253,6 +1254,83 @@ export const useDeleteApiKey = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getDeleteApiKeyMutationOptions(options));
     }
+
+export const getListReposUrl = () => {
+
+
+
+
+  return `/api/repos`
+}
+
+/**
+ * @summary List GitHub repositories for the configured owner (read-only)
+ */
+export const listRepos = async ( options?: RequestInit): Promise<GithubRepoList> => {
+
+  return customFetch<GithubRepoList>(getListReposUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListReposQueryKey = () => {
+    return [
+    `/api/repos`
+    ] as const;
+    }
+
+
+export const getListReposQueryOptions = <TData = Awaited<ReturnType<typeof listRepos>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRepos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListReposQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRepos>>> = ({ signal }) => listRepos({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRepos>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListReposQueryResult = NonNullable<Awaited<ReturnType<typeof listRepos>>>
+export type ListReposQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List GitHub repositories for the configured owner (read-only)
+ */
+
+export function useListRepos<TData = Awaited<ReturnType<typeof listRepos>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRepos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListReposQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getAnalyzeTextUrl = () => {
 

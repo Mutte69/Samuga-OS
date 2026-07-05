@@ -19,6 +19,8 @@ export * from './apiKeyInput';
 export * from './configInput';
 export * from './dashboardStats';
 export * from './errorResponse';
+export * from './githubRepo';
+export * from './githubRepoList';
 export * from './healthStatus';
 export * from './listAnalyticsParams';
 export * from './listLogsLogLevel';

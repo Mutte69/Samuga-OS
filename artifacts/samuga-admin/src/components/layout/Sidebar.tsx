@@ -7,7 +7,8 @@ import {
   Activity, 
   Settings2, 
   Key, 
-  BrainCircuit, 
+  BrainCircuit,
+  GitFork,
   LogOut 
 } from "lucide-react";
 import samugaLogo from "@assets/SamugaNewsBot_Profile_1783224477392.png";
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { href: "/configs", label: "Remote Configs", icon: Settings2 },
   { href: "/api-keys", label: "API Keys", icon: Key },
   { href: "/ai", label: "AI Analyzer", icon: BrainCircuit },
+  { href: "/repos", label: "Repositories", icon: GitFork },
 ];
 
 export function Sidebar() {

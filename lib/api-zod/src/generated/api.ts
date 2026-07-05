@@ -271,6 +271,24 @@ export const DeleteApiKeyResponse = zod.object({
 
 
 /**
+ * @summary List GitHub repositories for the configured owner (read-only)
+ */
+export const ListReposResponse = zod.object({
+  "repos": zod.array(zod.object({
+  "name": zod.string(),
+  "full_name": zod.string(),
+  "html_url": zod.string(),
+  "description": zod.string().nullish(),
+  "default_branch": zod.string(),
+  "private": zod.boolean(),
+  "updated_at": zod.string(),
+  "language": zod.string().nullish()
+})),
+  "total": zod.number()
+})
+
+
+/**
  * @summary Analyze text using the AI engine (structured summary, smart reply, or classification)
  */
 export const AnalyzeTextBody = zod.object({
