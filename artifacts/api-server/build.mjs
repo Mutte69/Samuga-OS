@@ -33,6 +33,9 @@ async function buildAll() {
       // __dirname resolves to dist/ where the file doesn't exist. Keep it external
       // so Node resolves it from node_modules with the correct path.
       "connect-pg-simple",
+      // geoip-lite reads binary .dat data files via __dirname at startup; must stay
+      // external so Node resolves paths relative to node_modules/geoip-lite/data/.
+      "geoip-lite",
       "sharp",
       "better-sqlite3",
       "sqlite3",

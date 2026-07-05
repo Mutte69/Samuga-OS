@@ -21,6 +21,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "express-session": "^1.19.0",
+    "geoip-lite": "^2.0.3",
     "pino": "^9.14.0",
     "pino-http": "^10.5.0"
   },
@@ -31,6 +32,7 @@
     "@types/express": "^5.0.6",
     "@types/express-rate-limit": "^6.0.2",
     "@types/express-session": "^1.19.0",
+    "@types/geoip-lite": "^1.4.4",
     "@types/node": "catalog:",
     "@types/supertest": "^7.2.0",
     "@vitest/coverage-v8": "^4.1.9",

@@ -4,6 +4,20 @@ import { db, projectEventsTable, projectMetricsTable, aiConversationsTable, webs
 import { requireIngestKey } from "../middleware/requireIngestKey";
 import { ingestRateLimit } from "../middleware/ingestRateLimit";
 import { eventBus } from "../lib/eventBus";
+import geoip from "geoip-lite";
+
+/** Resolve a two-letter country code from a request IP, or return null. */
+function countryFromRequest(req: import("express").Request): string | null {
+  // Trust X-Forwarded-For when behind a proxy (Replit's reverse proxy sets it)
+  const forwarded = req.headers["x-forwarded-for"];
+  const ip =
+    (typeof forwarded === "string" ? forwarded.split(",")[0].trim() : null) ??
+    req.socket.remoteAddress ??
+    "";
+  if (!ip) return null;
+  const geo = geoip.lookup(ip);
+  return geo?.country ?? null;
+}
 
 const router: IRouter = Router();
 
@@ -195,6 +209,13 @@ router.post("/ingest/website-visit", requireIngestKey, async (req, res): Promise
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
+
+  // Use caller-supplied country if present; otherwise geo-resolve from request IP
+  const resolvedCountry: string | null =
+    typeof country === "string" && country.length > 0
+      ? country
+      : countryFromRequest(req);
+
   let row: typeof websiteVisitsTable.$inferSelect;
   try {
     [row] = await db
@@ -204,7 +225,7 @@ router.post("/ingest/website-visit", requireIngestKey, async (req, res): Promise
         pagePath: page_path,
         referrer: referrer ?? null,
         userAgent: user_agent ?? null,
-        country: country ?? null,
+        country: resolvedCountry,
       })
       .returning();
   } catch (err) {
