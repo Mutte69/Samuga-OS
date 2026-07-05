@@ -46,6 +46,56 @@ function groupByDay(
   return counts;
 }
 
+/** Build a 7-day sparkline array for a specific page path (index 0 = 6 days ago, index 6 = today) */
+function pageSparkline(allVisits: WebsiteVisit[], pagePath: string): number[] {
+  const counts: number[] = Array(7).fill(0);
+  const now = new Date();
+  for (const v of allVisits) {
+    if ((v.pagePath || "/") !== pagePath) continue;
+    const visitDate = new Date(v.visitedAt);
+    const diffDays = Math.floor((now.getTime() - visitDate.getTime()) / 86400000);
+    if (diffDays >= 0 && diffDays < 7) {
+      counts[6 - diffDays] += 1;
+    }
+  }
+  return counts;
+}
+
+/** Render a tiny SVG sparkline */
+function Sparkline({ data, color = "#22d3ee" }: { data: number[]; color?: string }) {
+  const w = 64;
+  const h = 24;
+  const max = Math.max(...data, 1);
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - (v / max) * (h - 4) - 2;
+    return `${x},${y}`;
+  });
+  const pointsStr = pts.join(" ");
+  // Build a filled area path
+  const areaPath = `M0,${h} ${pts.map((p) => `L${p}`).join(" ")} L${w},${h} Z`;
+
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: "visible" }}>
+      <defs>
+        <linearGradient id="spk-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path d={areaPath} fill="url(#spk-fill)" />
+      <polyline
+        points={pointsStr}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /** Aggregate visits by pagePath, sorted descending */
 function topPagesByPath(visits: WebsiteVisit[]): Array<{ path: string; count: number; share: number }> {
   const counts: Record<string, number> = {};
@@ -412,25 +462,37 @@ export default function Traffic() {
               <tr className="border-b" style={{ borderColor: "rgba(34,211,238,0.08)" }}>
                 <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-mono w-8" style={{ color: "rgba(34,211,238,0.6)" }}>#</th>
                 <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Page Path</th>
+                <th className="px-6 py-3 text-center text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>7d Trend</th>
                 <th className="px-6 py-3 text-right text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Visits</th>
                 <th className="px-6 py-3 text-right text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Share</th>
               </tr>
             </thead>
             <tbody>
-              {filteredTopPages.map((row, idx) => (
-                <tr
-                  key={row.path}
-                  className="border-b hover:bg-white/5 transition-colors"
-                  style={{ borderColor: "rgba(255,255,255,0.04)" }}
-                >
-                  <td className="px-6 py-3 font-mono text-slate-500 text-xs">{idx + 1}</td>
-                  <td className="px-6 py-3 text-slate-200 font-mono text-xs break-all">{row.path}</td>
-                  <td className="px-6 py-3 text-right font-mono text-slate-300">{row.count.toLocaleString()}</td>
-                  <td className="px-6 py-3 text-right font-mono">
-                    <span style={{ color: "#22d3ee" }}>{row.share.toFixed(1)}%</span>
-                  </td>
-                </tr>
-              ))}
+              {filteredTopPages.map((row, idx) => {
+                const sparkData = pageSparkline(rawForTopPages, row.path);
+                const isFlat = sparkData.every((v) => v === 0);
+                return (
+                  <tr
+                    key={row.path}
+                    className="border-b hover:bg-white/5 transition-colors"
+                    style={{ borderColor: "rgba(255,255,255,0.04)" }}
+                  >
+                    <td className="px-6 py-3 font-mono text-slate-500 text-xs">{idx + 1}</td>
+                    <td className="px-6 py-3 text-slate-200 font-mono text-xs break-all">{row.path}</td>
+                    <td className="px-6 py-3 flex justify-center items-center">
+                      {isFlat ? (
+                        <span className="text-xs font-mono" style={{ color: "rgba(148,163,184,0.3)" }}>—</span>
+                      ) : (
+                        <Sparkline data={sparkData} />
+                      )}
+                    </td>
+                    <td className="px-6 py-3 text-right font-mono text-slate-300">{row.count.toLocaleString()}</td>
+                    <td className="px-6 py-3 text-right font-mono">
+                      <span style={{ color: "#22d3ee" }}>{row.share.toFixed(1)}%</span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
