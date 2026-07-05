@@ -2,9 +2,13 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, projectEventsTable, projectMetricsTable, aiConversationsTable, websiteVisitsTable, projectsTable } from "@workspace/db";
 import { requireIngestKey } from "../middleware/requireIngestKey";
+import { ingestRateLimit } from "../middleware/ingestRateLimit";
 import { eventBus } from "../lib/eventBus";
 
 const router: IRouter = Router();
+
+// Apply rate limiting to every ingest route
+router.use(ingestRateLimit);
 
 // ── Helper: resolve a numeric project ID from project_id or project_slug ────
 async function resolveProjectId(
