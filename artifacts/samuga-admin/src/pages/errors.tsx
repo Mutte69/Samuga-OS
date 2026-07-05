@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { useLive } from "@/context/LiveContext";
-
+import { apiFetch } from "@/lib/api-fetch";
 
 interface Project { id: number; name: string; slug: string; }
 interface ProjectEvent { id: number; projectId: number; eventType: string; message: string; metadata: unknown; occurredAt: string; }
@@ -11,10 +11,11 @@ function useProjects() {
   return useQuery<{ projects: Project[] }>({
     queryKey: ["projects"],
     queryFn: async () => {
-      const res = await fetch(`/api/v1/projects`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch projects");
+      const res = await apiFetch(`/api/v1/projects`);
+      if (!res.ok) throw new Error(`Projects API returned ${res.status}`);
       return res.json();
     },
+    retry: 1,
   });
 }
 
@@ -22,11 +23,12 @@ function useProjectEvents(projectId: string) {
   return useQuery<{ events: ProjectEvent[] }>({
     queryKey: ["project", projectId, "events"],
     queryFn: async () => {
-      const res = await fetch(`/api/v1/projects/${projectId}/events`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch events");
+      const res = await apiFetch(`/api/v1/projects/${projectId}/events`);
+      if (!res.ok) throw new Error(`Events API returned ${res.status}`);
       return res.json();
     },
     enabled: !!projectId,
+    retry: 1,
   });
 }
 
@@ -38,8 +40,8 @@ const CARD_STYLE = {
 
 export default function Errors() {
   const [selectedProject, setSelectedProject] = useState<string>("");
-  const { data: projectsData } = useProjects();
-  const { data: eventsData, isLoading } = useProjectEvents(selectedProject);
+  const { data: projectsData, isError: projectsError } = useProjects();
+  const { data: eventsData, isLoading, isError: eventsError } = useProjectEvents(selectedProject);
   const queryClient = useQueryClient();
   const { subscribe } = useLive();
 
@@ -70,17 +72,21 @@ export default function Errors() {
       {/* Filter */}
       <div style={CARD_STYLE} className="rounded-xl p-4 flex items-center gap-4">
         <label className="text-sm font-medium text-slate-300">Filter by project</label>
-        <select
-          value={selectedProject}
-          onChange={(e) => setSelectedProject(e.target.value)}
-          className="rounded-md px-3 py-1.5 text-sm text-white"
-          style={{ background: "rgba(5,14,30,0.9)", border: "1px solid rgba(34,211,238,0.25)" }}
-        >
-          <option value="">— Select a project —</option>
-          {projects.map((p) => (
-            <option key={p.id} value={String(p.id)}>{p.name}</option>
-          ))}
-        </select>
+        {projectsError ? (
+          <p className="text-sm text-red-400">Could not load projects — check API connectivity.</p>
+        ) : (
+          <select
+            value={selectedProject}
+            onChange={(e) => setSelectedProject(e.target.value)}
+            className="rounded-md px-3 py-1.5 text-sm text-white"
+            style={{ background: "rgba(5,14,30,0.9)", border: "1px solid rgba(34,211,238,0.25)" }}
+          >
+            <option value="">— Select a project —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={String(p.id)}>{p.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Table */}
@@ -90,6 +96,11 @@ export default function Errors() {
         ) : isLoading ? (
           <div className="py-12 flex justify-center">
             <div className="animate-spin w-6 h-6 border-4 rounded-full" style={{ borderColor: "rgba(34,211,238,0.3)", borderTopColor: "#22d3ee" }} />
+          </div>
+        ) : eventsError ? (
+          <div className="px-6 py-12 text-center">
+            <AlertTriangle className="w-8 h-8 mx-auto mb-3" style={{ color: "#f87171" }} />
+            <p className="text-red-400 text-sm">Could not load events for this project.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

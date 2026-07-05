@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { FolderKanban, Clock } from "lucide-react";
-
+import { FolderKanban, Clock, AlertTriangle } from "lucide-react";
+import { apiFetch } from "@/lib/api-fetch";
 
 interface Project {
   id: number;
@@ -15,10 +15,11 @@ function useProjects() {
   return useQuery<{ projects: Project[] }>({
     queryKey: ["projects"],
     queryFn: async () => {
-      const res = await fetch(`/api/v1/projects`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch projects");
+      const res = await apiFetch(`/api/v1/projects`);
+      if (!res.ok) throw new Error(`Projects API returned ${res.status}`);
       return res.json();
     },
+    retry: 1,
   });
 }
 
@@ -29,12 +30,23 @@ const CARD_STYLE = {
 };
 
 export default function Projects() {
-  const { data, isLoading } = useProjects();
+  const { data, isLoading, isError, error } = useProjects();
 
   if (isLoading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-[50vh]">
         <div className="animate-spin w-8 h-8 border-4 rounded-full" style={{ borderColor: "rgba(34,211,238,0.3)", borderTopColor: "#22d3ee" }} />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="p-8 flex flex-col items-center justify-center min-h-[50vh] gap-4">
+        <AlertTriangle className="w-10 h-10" style={{ color: "#f87171" }} />
+        <p className="text-slate-400 text-sm text-center max-w-md">
+          {(error as Error)?.message ?? "Could not load projects. Check that the API server is reachable."}
+        </p>
       </div>
     );
   }

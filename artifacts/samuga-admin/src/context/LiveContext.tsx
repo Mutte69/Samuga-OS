@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback } f
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
+import { API_BASE } from "@/lib/api-fetch";
 
 export interface RateLimitPayload {
   id: string;
@@ -134,7 +135,9 @@ export function useLiveRateLimits() {
   return subscribeRateLimit;
 }
 
-const SSE_URL = "/api/v1/live";
+// Use the same base as apiFetch so the SSE stream reaches the correct host
+// in Railway (where admin frontend and API server are separate services).
+const SSE_URL = `${API_BASE}/api/v1/live`;
 const INITIAL_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 30_000;
 const BASE_TITLE = document.title || "Samuga Admin";

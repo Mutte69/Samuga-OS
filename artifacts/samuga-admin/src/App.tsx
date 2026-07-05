@@ -22,7 +22,16 @@ import DataExplorer from "@/pages/data-explorer";
 import { Shell } from "@/components/layout/Shell";
 import { LiveProvider } from "@/context/LiveContext";
 
-const queryClient = new QueryClient();
+// Retry once (not three times) so errors surface within ~2 s instead of
+// the ~20 s it would take with the default 3-retry + exponential backoff.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      retryDelay: 1000,
+    },
+  },
+});
 
 function Router() {
   return (

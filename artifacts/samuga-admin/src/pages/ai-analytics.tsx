@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BrainCircuit } from "lucide-react";
-
+import { BrainCircuit, AlertTriangle } from "lucide-react";
+import { apiFetch } from "@/lib/api-fetch";
 
 interface Project { id: number; name: string; }
 interface Conversation { id: number; sessionId: string; userMessage: string; assistantMessage: string; model: string | null; tokensUsed: number | null; startedAt: string; }
@@ -10,10 +10,11 @@ function useProjects() {
   return useQuery<{ projects: Project[] }>({
     queryKey: ["projects"],
     queryFn: async () => {
-      const res = await fetch(`/api/v1/projects`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
+      const res = await apiFetch(`/api/v1/projects`);
+      if (!res.ok) throw new Error(`Projects API returned ${res.status}`);
       return res.json();
     },
+    retry: 1,
   });
 }
 
@@ -21,11 +22,12 @@ function useConversations(projectId: string) {
   return useQuery<{ conversations: Conversation[] }>({
     queryKey: ["project", projectId, "conversations"],
     queryFn: async () => {
-      const res = await fetch(`/api/v1/projects/${projectId}/conversations`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
+      const res = await apiFetch(`/api/v1/projects/${projectId}/conversations`);
+      if (!res.ok) throw new Error(`Conversations API returned ${res.status}`);
       return res.json();
     },
     enabled: !!projectId,
+    retry: 1,
   });
 }
 
@@ -37,8 +39,8 @@ const CARD_STYLE = {
 
 export default function AiAnalytics() {
   const [selectedProject, setSelectedProject] = useState<string>("");
-  const { data: projectsData } = useProjects();
-  const { data: convData, isLoading } = useConversations(selectedProject);
+  const { data: projectsData, isError: projectsError } = useProjects();
+  const { data: convData, isLoading, isError: convError } = useConversations(selectedProject);
 
   const projects = projectsData?.projects ?? [];
   const conversations = convData?.conversations ?? [];
@@ -69,20 +71,24 @@ export default function AiAnalytics() {
       {/* Project selector */}
       <div style={CARD_STYLE} className="rounded-xl p-4 flex items-center gap-4">
         <label className="text-sm font-medium text-slate-300">Project</label>
-        <select
-          value={selectedProject}
-          onChange={(e) => setSelectedProject(e.target.value)}
-          className="rounded-md px-3 py-1.5 text-sm text-white"
-          style={{ background: "rgba(5,14,30,0.9)", border: "1px solid rgba(34,211,238,0.25)" }}
-        >
-          <option value="">— Select a project —</option>
-          {projects.map((p) => (
-            <option key={p.id} value={String(p.id)}>{p.name}</option>
-          ))}
-        </select>
+        {projectsError ? (
+          <p className="text-sm text-red-400">Could not load projects — check API connectivity.</p>
+        ) : (
+          <select
+            value={selectedProject}
+            onChange={(e) => setSelectedProject(e.target.value)}
+            className="rounded-md px-3 py-1.5 text-sm text-white"
+            style={{ background: "rgba(5,14,30,0.9)", border: "1px solid rgba(34,211,238,0.25)" }}
+          >
+            <option value="">— Select a project —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={String(p.id)}>{p.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
-      {selectedProject && !isLoading && (
+      {selectedProject && !isLoading && !convError && (
         <>
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4">
@@ -160,6 +166,13 @@ export default function AiAnalytics() {
       {selectedProject && isLoading && (
         <div className="py-12 flex justify-center">
           <div className="animate-spin w-6 h-6 border-4 rounded-full" style={{ borderColor: "rgba(34,211,238,0.3)", borderTopColor: "#22d3ee" }} />
+        </div>
+      )}
+
+      {selectedProject && convError && (
+        <div style={CARD_STYLE} className="rounded-xl p-12 text-center">
+          <AlertTriangle className="w-10 h-10 mx-auto mb-3" style={{ color: "#f87171" }} />
+          <p className="text-red-400 text-sm">Could not load conversations for this project.</p>
         </div>
       )}
 

@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { TrendingUp, Download } from "lucide-react";
+import { TrendingUp, Download, AlertTriangle } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
@@ -261,9 +261,10 @@ export default function Traffic() {
   const isCustom = customFrom !== "" || customTo !== "";
 
   // ── 1. Fetch projects ──────────────────────────────────────────────────
-  const { data: projectsData, isLoading: projectsLoading } = useQuery({
+  const { data: projectsData, isLoading: projectsLoading, isError: projectsError } = useQuery({
     queryKey: ["projects"],
     queryFn: () => listProjects(),
+    retry: 1,
   });
   const projects = projectsData?.projects ?? [];
 
@@ -297,7 +298,8 @@ export default function Traffic() {
   );
 
   const chartData = buildChartData(projects, visitsByProject);
-  const isLoading = projectsLoading || visitQueries.some((q) => q.isLoading);
+  // isLoading only aggregates genuine loading states; errored queries are not loading
+  const isLoading = projectsLoading || visitQueries.some((q) => q.isLoading && !q.isError);
   const hasData = chartData.some((row) =>
     projects.some((p) => (row[p.name] as number) > 0),
   );
@@ -330,6 +332,17 @@ export default function Traffic() {
     a.click();
     URL.revokeObjectURL(url);
   }, [projects, rawVisitsByProject, fromDate, toDate]);
+
+  if (projectsError) {
+    return (
+      <div className="p-8 flex flex-col items-center justify-center min-h-[50vh] gap-4">
+        <AlertTriangle className="w-10 h-10" style={{ color: "#f87171" }} />
+        <p className="text-slate-400 text-sm text-center max-w-md">
+          Could not load projects. Check that the API server is reachable and VITE_API_BASE_URL is set correctly.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6">

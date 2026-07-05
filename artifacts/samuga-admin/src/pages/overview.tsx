@@ -1,9 +1,10 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, MessageSquare, Globe, Zap } from "lucide-react";
+import { Activity, MessageSquare, Globe, Zap, AlertTriangle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useLive } from "@/context/LiveContext";
 import { RateLimitPanel } from "@/components/RateLimitPanel";
+import { apiFetch } from "@/lib/api-fetch";
 
 interface OverviewStats {
   totalEvents: number;
@@ -29,10 +30,11 @@ function useOverviewStats() {
   return useQuery<OverviewStats>({
     queryKey: ["overview"],
     queryFn: async () => {
-      const res = await fetch(`/api/v1/overview`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch overview");
+      const res = await apiFetch(`/api/v1/overview`);
+      if (!res.ok) throw new Error(`Overview API returned ${res.status}`);
       return res.json();
     },
+    retry: 1,
   });
 }
 
@@ -64,8 +66,27 @@ const CARD_STYLE = {
   backdropFilter: "blur(12px)",
 };
 
+function Spinner() {
+  return (
+    <div className="p-8 flex items-center justify-center min-h-[50vh]">
+      <div className="animate-spin w-8 h-8 border-4 rounded-full" style={{ borderColor: "rgba(34,211,238,0.3)", borderTopColor: "#22d3ee" }} />
+    </div>
+  );
+}
+
+function ErrorState({ message }: { message?: string }) {
+  return (
+    <div className="p-8 flex flex-col items-center justify-center min-h-[50vh] gap-4">
+      <AlertTriangle className="w-10 h-10" style={{ color: "#f87171" }} />
+      <p className="text-slate-400 text-sm text-center max-w-md">
+        {message ?? "Could not load overview data. Check that the API server is reachable and try refreshing."}
+      </p>
+    </div>
+  );
+}
+
 export default function Overview() {
-  const { data: stats, isLoading } = useOverviewStats();
+  const { data: stats, isLoading, isError, error } = useOverviewStats();
   const queryClient = useQueryClient();
   const { subscribe } = useLive();
 
@@ -76,13 +97,8 @@ export default function Overview() {
     });
   }, [subscribe, queryClient]);
 
-  if (isLoading || !stats) {
-    return (
-      <div className="p-8 flex items-center justify-center min-h-[50vh]">
-        <div className="animate-spin w-8 h-8 border-4 rounded-full" style={{ borderColor: "rgba(34,211,238,0.3)", borderTopColor: "#22d3ee" }} />
-      </div>
-    );
-  }
+  if (isLoading) return <Spinner />;
+  if (isError || !stats) return <ErrorState message={(error as Error)?.message} />;
 
   return (
     <div className="p-8 space-y-8">
