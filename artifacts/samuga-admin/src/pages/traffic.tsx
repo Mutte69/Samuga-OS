@@ -173,8 +173,8 @@ export default function Traffic() {
   // ── 2. Fetch visits for every project in parallel ──────────────────────
   const visitQueries = useQueries({
     queries: projects.map((p) => ({
-      queryKey: ["project", p.id, "visits"] as const,
-      queryFn: () => getProjectVisits(p.id),
+      queryKey: ["project", p.id, "visits", 10000] as const,
+      queryFn: () => getProjectVisits(p.id, { limit: 10000 }),
       enabled: projects.length > 0,
     })),
   });

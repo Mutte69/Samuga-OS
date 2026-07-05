@@ -49,14 +49,24 @@ router.get("/v1/projects/:id/conversations", requireAdminSession, async (req, re
   res.json({ conversations });
 });
 
-// GET /v1/projects/:id/visits — last 500 rows desc
+// GET /v1/projects/:id/visits — configurable limit (default 5000, max 50000)
+const VISITS_DEFAULT_LIMIT = 5000;
+const VISITS_MAX_LIMIT = 50000;
+
 router.get("/v1/projects/:id/visits", requireAdminSession, async (req, res): Promise<void> => {
   const id = parseParamId(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid project id" }); return; }
+
+  const rawLimit = req.query["limit"];
+  const parsedLimit = rawLimit ? parseInt(String(rawLimit), 10) : VISITS_DEFAULT_LIMIT;
+  const limit = isNaN(parsedLimit) || parsedLimit < 1
+    ? VISITS_DEFAULT_LIMIT
+    : Math.min(parsedLimit, VISITS_MAX_LIMIT);
+
   const visits = await db
     .select().from(websiteVisitsTable)
     .where(eq(websiteVisitsTable.projectId, id))
-    .orderBy(desc(websiteVisitsTable.visitedAt)).limit(500);
+    .orderBy(desc(websiteVisitsTable.visitedAt)).limit(limit);
   res.json({ visits });
 });
 

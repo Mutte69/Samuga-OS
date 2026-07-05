@@ -1651,20 +1651,20 @@ export function useGetProjectConversations<TData = Awaited<ReturnType<typeof get
 
 
 
-export const getGetProjectVisitsUrl = (id: number,) => {
-
-
-
-
-  return `/api/v1/projects/${id}/visits`
+export const getGetProjectVisitsUrl = (id: number, params?: { limit?: number }) => {
+  const url = `/api/v1/projects/${id}/visits`;
+  if (params?.limit !== undefined) {
+    return `${url}?limit=${params.limit}`;
+  }
+  return url;
 }
 
 /**
- * @summary Last 500 website visit rows for a project (session auth)
+ * @summary Website visit rows for a project (session auth). Default 5000, max 50000.
  */
-export const getProjectVisits = async (id: number, options?: RequestInit): Promise<WebsiteVisitList> => {
+export const getProjectVisits = async (id: number, params?: { limit?: number }, options?: RequestInit): Promise<WebsiteVisitList> => {
 
-  return customFetch<WebsiteVisitList>(getGetProjectVisitsUrl(id),
+  return customFetch<WebsiteVisitList>(getGetProjectVisitsUrl(id, params),
   {
     ...options,
     method: 'GET'
@@ -1693,7 +1693,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProjectVisits>>> = ({ signal }) => getProjectVisits(id, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProjectVisits>>> = ({ signal }) => getProjectVisits(id, undefined, { signal, ...requestOptions });
 
 
 
