@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { TrendingUp } from "lucide-react";
 import {
@@ -26,6 +27,19 @@ function groupByDay(visits: WebsiteVisit[]): Record<string, number> {
   return counts;
 }
 
+/** Aggregate visits by pagePath, sorted descending */
+function topPagesByPath(visits: WebsiteVisit[]): Array<{ path: string; count: number; share: number }> {
+  const counts: Record<string, number> = {};
+  for (const v of visits) {
+    const p = v.pagePath || "/";
+    counts[p] = (counts[p] ?? 0) + 1;
+  }
+  const total = Object.values(counts).reduce((s, n) => s + n, 0);
+  return Object.entries(counts)
+    .map(([path, count]) => ({ path, count, share: total > 0 ? (count / total) * 100 : 0 }))
+    .sort((a, b) => b.count - a.count);
+}
+
 /** Build recharts data: [{date, <projectName>: count, ...}] */
 function buildChartData(
   projects: Project[],
@@ -48,6 +62,8 @@ function buildChartData(
 }
 
 export default function Traffic() {
+  const [selectedProjectId, setSelectedProjectId] = useState<number | "all">("all");
+
   // ── 1. Fetch projects ──────────────────────────────────────────────────
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
     queryKey: ["projects"],
@@ -66,10 +82,12 @@ export default function Traffic() {
 
   // ── 3. Derive chart data from stable query results ─────────────────────
   const visitsByProject: Record<number, Record<string, number>> = {};
+  const rawVisitsByProject: Record<number, WebsiteVisit[]> = {};
   for (let i = 0; i < projects.length; i++) {
     const result = visitQueries[i];
     if (result?.data?.visits) {
       visitsByProject[projects[i].id] = groupByDay(result.data.visits);
+      rawVisitsByProject[projects[i].id] = result.data.visits;
     }
   }
 
@@ -83,6 +101,14 @@ export default function Traffic() {
   const hasData = chartData.some((row) =>
     projects.some((p) => (row[p.name] as number) > 0),
   );
+
+  // ── 4. Top pages for selected project ─────────────────────────────────
+  const visitsForTopPages: WebsiteVisit[] =
+    selectedProjectId === "all"
+      ? Object.values(rawVisitsByProject).flat()
+      : (rawVisitsByProject[selectedProjectId as number] ?? []);
+
+  const topPages = topPagesByPath(visitsForTopPages);
 
   return (
     <div className="p-8 space-y-6">
@@ -153,6 +179,78 @@ export default function Traffic() {
               ))}
             </LineChart>
           </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Top Pages table */}
+      <div style={CARD_STYLE} className="rounded-xl">
+        <div
+          className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap"
+          style={{ borderColor: "rgba(34,211,238,0.12)" }}
+        >
+          <h2 className="text-base font-semibold text-white">Top Pages</h2>
+          {/* Project filter */}
+          <select
+            value={selectedProjectId}
+            onChange={(e) =>
+              setSelectedProjectId(e.target.value === "all" ? "all" : Number(e.target.value))
+            }
+            className="rounded-lg px-3 py-1.5 text-sm font-mono text-slate-200 outline-none focus:ring-1"
+            style={{
+              background: "rgba(5,14,30,0.9)",
+              border: "1px solid rgba(34,211,238,0.25)",
+              color: "#e2e8f0",
+              /* @ts-ignore */
+              focusRingColor: "#22d3ee",
+            }}
+          >
+            <option value="all">All projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {isLoading ? (
+          <div className="py-12 flex justify-center">
+            <div
+              className="animate-spin w-6 h-6 border-4 rounded-full"
+              style={{ borderColor: "rgba(34,211,238,0.3)", borderTopColor: "#22d3ee" }}
+            />
+          </div>
+        ) : topPages.length === 0 ? (
+          <p className="text-slate-500 text-sm text-center py-8">
+            No visit data for the selected project.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b" style={{ borderColor: "rgba(34,211,238,0.08)" }}>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-mono w-8" style={{ color: "rgba(34,211,238,0.6)" }}>#</th>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Page Path</th>
+                <th className="px-6 py-3 text-right text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Visits</th>
+                <th className="px-6 py-3 text-right text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topPages.map((row, idx) => (
+                <tr
+                  key={row.path}
+                  className="border-b hover:bg-white/5 transition-colors"
+                  style={{ borderColor: "rgba(255,255,255,0.04)" }}
+                >
+                  <td className="px-6 py-3 font-mono text-slate-500 text-xs">{idx + 1}</td>
+                  <td className="px-6 py-3 text-slate-200 font-mono text-xs break-all">{row.path}</td>
+                  <td className="px-6 py-3 text-right font-mono text-slate-300">{row.count.toLocaleString()}</td>
+                  <td className="px-6 py-3 text-right font-mono">
+                    <span style={{ color: "#22d3ee" }}>{row.share.toFixed(1)}%</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 
