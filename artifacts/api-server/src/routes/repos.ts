@@ -4,22 +4,25 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN?.trim();
-const GITHUB_OWNER = process.env.GITHUB_OWNER?.trim();
-
-if (!GITHUB_OWNER) {
+// Warn at startup only when neither credential is configured.
+// GITHUB_TOKEN alone is sufficient for the authenticated /user/repos endpoint.
+// GITHUB_OWNER alone allows the public /users/:owner/repos endpoint (public repos only).
+if (!process.env.GITHUB_TOKEN?.trim() && !process.env.GITHUB_OWNER?.trim()) {
   logger.warn(
-    "GITHUB_OWNER environment variable is not set — GET /repos will return 503",
+    "Neither GITHUB_TOKEN nor GITHUB_OWNER is set — GET /repos will return 503",
   );
 }
 
-// GITHUB_TOKEN is intentionally not validated at startup — it is optional for
-// public repos. Missing token reduces rate-limit to 60 req/h; still functional.
-
 router.get("/repos", requireAdminSession, async (_req, res): Promise<void> => {
-  if (!GITHUB_OWNER) {
+  // Read at request time so a redeploy with updated env vars is picked up
+  // without a code change.
+  const GITHUB_TOKEN = process.env.GITHUB_TOKEN?.trim();
+  const GITHUB_OWNER = process.env.GITHUB_OWNER?.trim();
+
+  if (!GITHUB_TOKEN && !GITHUB_OWNER) {
     res.status(503).json({
-      error: "GitHub owner not configured. Set GITHUB_OWNER on the server.",
+      error:
+        "GitHub not configured. Set GITHUB_TOKEN (recommended) or GITHUB_OWNER on the server.",
     });
     return;
   }
@@ -34,20 +37,31 @@ router.get("/repos", requireAdminSession, async (_req, res): Promise<void> => {
     headers["Authorization"] = `Bearer ${GITHUB_TOKEN}`;
   }
 
-  logger.info({ owner: GITHUB_OWNER }, "Fetching GitHub repositories");
+  logger.info(
+    { owner: GITHUB_OWNER ?? "(from token)", authenticated: !!GITHUB_TOKEN },
+    "Fetching GitHub repositories",
+  );
 
   let page = 1;
   const allRepos: unknown[] = [];
 
-  // GitHub paginates at 100 items/page; walk all pages.
   while (true) {
-    const url = `https://api.github.com/users/${encodeURIComponent(GITHUB_OWNER)}/repos?per_page=100&page=${page}&sort=updated`;
+    // When a token is present, use the authenticated /user/repos endpoint so
+    // that private repositories are included — the owner is inferred from the
+    // token itself, so GITHUB_OWNER is not required.
+    //
+    // Without a token, fall back to the public /users/:owner/repos endpoint
+    // (public repos only, lower rate limit, requires GITHUB_OWNER).
+    const url = GITHUB_TOKEN
+      ? `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated&visibility=all&affiliation=owner,collaborator,organization_member`
+      : `https://api.github.com/users/${encodeURIComponent(GITHUB_OWNER!)}/repos?per_page=100&page=${page}&sort=updated`;
+
     const response = await fetch(url, { headers });
 
     if (!response.ok) {
       const body = await response.text();
       logger.error(
-        { status: response.status, owner: GITHUB_OWNER, body },
+        { status: response.status, owner: GITHUB_OWNER ?? "(from token)", body },
         "GitHub API error",
       );
       res.status(502).json({
@@ -77,7 +91,10 @@ router.get("/repos", requireAdminSession, async (_req, res): Promise<void> => {
     language: (r.language ?? null) as string | null,
   }));
 
-  logger.info({ owner: GITHUB_OWNER, count: repos.length }, "Repos fetched");
+  logger.info(
+    { owner: GITHUB_OWNER ?? "(from token)", count: repos.length },
+    "Repos fetched",
+  );
   res.json({ repos, total: repos.length });
 });
 

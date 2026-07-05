@@ -77,6 +77,51 @@ await pool.query(`
   CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
 `);
 
+// ── Core tables bootstrap ────────────────────────────────────────────────────
+// These tables are defined in lib/db schema but have no Drizzle migration runner,
+// so we ensure they exist here alongside the session table.
+const coreTables = [
+  `CREATE TABLE IF NOT EXISTS "system_logs" (
+    "id"          serial       PRIMARY KEY,
+    "source_repo" text         NOT NULL,
+    "log_level"   text         NOT NULL,
+    "message"     text         NOT NULL,
+    "timestamp"   timestamptz  NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "user_analytics" (
+    "id"               serial       PRIMARY KEY,
+    "platform"         text         NOT NULL,
+    "user_identifier"  text         NOT NULL,
+    "action_performed" text         NOT NULL,
+    "data_payload"     jsonb,
+    "timestamp"        timestamptz  NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "system_configs" (
+    "id"          serial       PRIMARY KEY,
+    "key"         text         NOT NULL UNIQUE,
+    "value"       text         NOT NULL,
+    "description" text,
+    "webhook_url" text,
+    "updated_at"  timestamptz  NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "api_keys" (
+    "id"          serial       PRIMARY KEY,
+    "name"        text         NOT NULL,
+    "key_hash"    text         NOT NULL UNIQUE,
+    "key_preview" text         NOT NULL,
+    "created_at"  timestamptz  NOT NULL DEFAULT now(),
+    "last_used"   timestamptz
+  )`,
+];
+
+for (const ddl of coreTables) {
+  try {
+    await pool.query(ddl);
+  } catch (err) {
+    logger.warn({ err }, "Failed to create core table (non-fatal)");
+  }
+}
+
 // ── New project tables bootstrap ────────────────────────────────────────────
 const newTables = [
   `CREATE TABLE IF NOT EXISTS "projects" (
