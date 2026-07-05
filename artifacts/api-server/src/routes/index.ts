@@ -12,6 +12,7 @@ import ingestRouter from "./ingest";
 import projectsRouter from "./projects";
 import overviewRouter from "./overview";
 import liveRouter from "./live";
+import rateLimitsRouter from "./rate-limits";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(ingestRouter);
 router.use(projectsRouter);
 router.use(overviewRouter);
 router.use(liveRouter);
+router.use(rateLimitsRouter);
 
 export default router;

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, MessageSquare, Globe, Zap } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useLive } from "@/context/LiveContext";
+import { RateLimitPanel } from "@/components/RateLimitPanel";
 
 interface OverviewStats {
   totalEvents: number;
@@ -119,6 +120,9 @@ export default function Overview() {
           </ResponsiveContainer>
         )}
       </div>
+
+      {/* Rate-limit activity panel */}
+      <RateLimitPanel />
 
       {/* Recent events table */}
       <div style={CARD_STYLE} className="rounded-xl">

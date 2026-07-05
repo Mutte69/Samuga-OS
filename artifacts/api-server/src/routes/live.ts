@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { requireAdminSession } from "../middlewares/session-auth";
 import { eventBus, type LiveEvent } from "../lib/eventBus";
+import type { RateLimitEvent } from "../lib/rateLimitStore";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -29,11 +30,21 @@ router.get("/v1/live", requireAdminSession, (req, res): void => {
     }
   }
 
+  function onRateLimit(evt: { type: "rate_limit"; data: RateLimitEvent }) {
+    try {
+      res.write(`event: rate_limit\ndata: ${JSON.stringify(evt.data)}\n\n`);
+    } catch {
+      // client disconnected between events
+    }
+  }
+
   eventBus.on("live", onLive);
+  eventBus.on("rate_limit", onRateLimit);
 
   req.on("close", () => {
     clearInterval(heartbeat);
     eventBus.off("live", onLive);
+    eventBus.off("rate_limit", onRateLimit);
     logger.debug("SSE client disconnected");
   });
 });
