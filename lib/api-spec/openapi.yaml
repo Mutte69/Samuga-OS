@@ -492,6 +492,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/AiConversationList"
 
+  /v1/projects/{id}/visits:
+    get:
+      operationId: getProjectVisits
+      tags: [projects]
+      summary: Last 500 website visit rows for a project (session auth)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Visit rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebsiteVisitList"
+        "400":
+          description: Invalid project id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ── Overview ──────────────────────────────────────────────────────────────
   /v1/overview:
     get:
@@ -1051,6 +1082,15 @@ components:
           type: ["string", "null"]
         visitedAt:
           type: string
+
+    WebsiteVisitList:
+      type: object
+      required: [visits]
+      properties:
+        visits:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebsiteVisit"
 
     OverviewStats:
       type: object

@@ -1,50 +1,14 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { TrendingUp } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
+import { getProjectVisits, listProjects } from "@workspace/api-client-react";
+import type { Project, WebsiteVisit } from "@workspace/api-client-react";
 
-
-interface Project { id: number; name: string; }
-interface Visit { id: number; projectId: number; pagePath: string; referrer: string | null; visitedAt: string; }
-
-function useProjects() {
-  return useQuery<{ projects: Project[] }>({
-    queryKey: ["projects"],
-    queryFn: async () => {
-      const res = await fetch(`/api/v1/projects`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-  });
-}
-
-// Fetch all visits for a project via the overview (we don't have a dedicated visits endpoint yet)
-function useVisits(projectId: string) {
-  return useQuery<{ visits: Visit[] }>({
-    queryKey: ["project", projectId, "visits-traffic"],
-    queryFn: async () => {
-      // We call overview and get websiteVisits indirectly — but for per-project traffic
-      // we fetch from events as a proxy. Actually we need a dedicated endpoint.
-      // For now we return empty since the spec only has events/metrics/conversations per project.
-      return { visits: [] };
-    },
-    enabled: !!projectId,
-  });
-}
-
-// Build daily visit counts from overview data
-function useOverviewForTraffic() {
-  return useQuery<{ totalVisits: number; recentEvents: Array<{ occurredAt: string; projectName: string }> }>({
-    queryKey: ["overview"],
-    queryFn: async () => {
-      const res = await fetch(`/api/v1/overview`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-  });
-}
+const PROJECT_COLORS = [
+  "#22d3ee", "#a78bfa", "#34d399", "#fb923c", "#f472b6", "#facc15", "#60a5fa",
+];
 
 const CARD_STYLE = {
   background: "rgba(5,14,30,0.7)",
@@ -52,23 +16,73 @@ const CARD_STYLE = {
   backdropFilter: "blur(12px)",
 };
 
+/** Aggregate visits by ISO date YYYY-MM-DD */
+function groupByDay(visits: WebsiteVisit[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const v of visits) {
+    const day = new Date(v.visitedAt).toISOString().slice(0, 10);
+    counts[day] = (counts[day] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** Build recharts data: [{date, <projectName>: count, ...}] */
+function buildChartData(
+  projects: Project[],
+  visitsByProject: Record<number, Record<string, number>>,
+): Array<Record<string, string | number>> {
+  const dateSet = new Set<string>();
+  for (const counts of Object.values(visitsByProject)) {
+    for (const d of Object.keys(counts)) dateSet.add(d);
+  }
+  if (dateSet.size === 0) return [];
+  return Array.from(dateSet)
+    .sort()
+    .map((date) => {
+      const row: Record<string, string | number> = { date };
+      for (const p of projects) {
+        row[p.name] = visitsByProject[p.id]?.[date] ?? 0;
+      }
+      return row;
+    });
+}
+
 export default function Traffic() {
-  const { data: projectsData } = useProjects();
-  const { data: overview, isLoading } = useOverviewForTraffic();
+  // ── 1. Fetch projects ──────────────────────────────────────────────────
+  const { data: projectsData, isLoading: projectsLoading } = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => listProjects(),
+  });
   const projects = projectsData?.projects ?? [];
 
-  // Group recent events by day as a proxy timeline
-  const eventsByDay = new Map<string, number>();
-  if (overview?.recentEvents) {
-    for (const e of overview.recentEvents) {
-      const day = new Date(e.occurredAt).toLocaleDateString();
-      eventsByDay.set(day, (eventsByDay.get(day) ?? 0) + 1);
+  // ── 2. Fetch visits for every project in parallel ──────────────────────
+  const visitQueries = useQueries({
+    queries: projects.map((p) => ({
+      queryKey: ["project", p.id, "visits"] as const,
+      queryFn: () => getProjectVisits(p.id),
+      enabled: projects.length > 0,
+    })),
+  });
+
+  // ── 3. Derive chart data from stable query results ─────────────────────
+  const visitsByProject: Record<number, Record<string, number>> = {};
+  for (let i = 0; i < projects.length; i++) {
+    const result = visitQueries[i];
+    if (result?.data?.visits) {
+      visitsByProject[projects[i].id] = groupByDay(result.data.visits);
     }
   }
 
-  const chartData = Array.from(eventsByDay.entries())
-    .map(([date, count]) => ({ date, events: count }))
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const totalVisits = Object.values(visitsByProject).reduce(
+    (sum, counts) => sum + Object.values(counts).reduce((s, v) => s + v, 0),
+    0,
+  );
+
+  const chartData = buildChartData(projects, visitsByProject);
+  const isLoading = projectsLoading || visitQueries.some((q) => q.isLoading);
+  const hasData = chartData.some((row) =>
+    projects.some((p) => (row[p.name] as number) > 0),
+  );
 
   return (
     <div className="p-8 space-y-6">
@@ -76,50 +90,73 @@ export default function Traffic() {
         <TrendingUp className="w-7 h-7" style={{ color: "#22d3ee" }} />
         <div>
           <h1 className="text-3xl font-bold text-white">Traffic</h1>
-          <p className="mt-0.5" style={{ color: "rgba(148,163,184,0.8)" }}>Website visit trends across projects.</p>
+          <p className="mt-0.5" style={{ color: "rgba(148,163,184,0.8)" }}>
+            Website visit trends across projects.
+          </p>
         </div>
       </div>
 
-      {/* KPI */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <div style={CARD_STYLE} className="rounded-xl p-5">
-          <p className="text-xs uppercase tracking-wider font-mono mb-1" style={{ color: "rgba(34,211,238,0.6)" }}>Total Visits</p>
-          <p className="text-3xl font-bold font-mono text-white">{overview?.totalVisits?.toLocaleString() ?? "—"}</p>
+          <p className="text-xs uppercase tracking-wider font-mono mb-1" style={{ color: "rgba(34,211,238,0.6)" }}>
+            Total Visits
+          </p>
+          <p className="text-3xl font-bold font-mono text-white">
+            {isLoading ? "—" : totalVisits.toLocaleString()}
+          </p>
         </div>
         <div style={CARD_STYLE} className="rounded-xl p-5">
-          <p className="text-xs uppercase tracking-wider font-mono mb-1" style={{ color: "rgba(34,211,238,0.6)" }}>Projects Tracked</p>
+          <p className="text-xs uppercase tracking-wider font-mono mb-1" style={{ color: "rgba(34,211,238,0.6)" }}>
+            Projects Tracked
+          </p>
           <p className="text-3xl font-bold font-mono text-white">{projects.length}</p>
         </div>
       </div>
 
-      {/* Line chart */}
+      {/* Line chart — one line per project */}
       <div style={CARD_STYLE} className="rounded-xl p-6">
-        <h2 className="text-base font-semibold text-white mb-4">Recent Event Activity (Proxy)</h2>
+        <h2 className="text-base font-semibold text-white mb-4">Daily Visits by Project</h2>
         {isLoading ? (
           <div className="py-12 flex justify-center">
-            <div className="animate-spin w-6 h-6 border-4 rounded-full" style={{ borderColor: "rgba(34,211,238,0.3)", borderTopColor: "#22d3ee" }} />
+            <div
+              className="animate-spin w-6 h-6 border-4 rounded-full"
+              style={{ borderColor: "rgba(34,211,238,0.3)", borderTopColor: "#22d3ee" }}
+            />
           </div>
-        ) : chartData.length === 0 ? (
-          <p className="text-slate-500 text-sm text-center py-8">No visit data recorded yet. Push data via the ingest API.</p>
+        ) : !hasData ? (
+          <p className="text-slate-500 text-sm text-center py-8">
+            No visit data recorded yet. Push data via the ingest API.
+          </p>
         ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={chartData}>
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-              <XAxis dataKey="date" tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="date" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
               <Tooltip
                 contentStyle={{ background: "rgba(5,14,30,0.95)", border: "1px solid rgba(34,211,238,0.3)", borderRadius: 8 }}
-                labelStyle={{ color: "#e2e8f0" }}
-                itemStyle={{ color: "#22d3ee" }}
+                labelStyle={{ color: "#e2e8f0", marginBottom: 4 }}
+                itemStyle={{ fontSize: 12 }}
               />
               <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 12 }} />
-              <Line type="monotone" dataKey="events" stroke="#22d3ee" strokeWidth={2} dot={false} name="Events" />
+              {projects.map((p, i) => (
+                <Line
+                  key={p.id}
+                  type="monotone"
+                  dataKey={p.name}
+                  stroke={PROJECT_COLORS[i % PROJECT_COLORS.length]}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         )}
       </div>
 
-      {/* Projects list */}
+      {/* Projects table */}
       <div style={CARD_STYLE} className="rounded-xl">
         <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(34,211,238,0.12)" }}>
           <h2 className="text-base font-semibold text-white">Monitored Projects</h2>
@@ -128,16 +165,30 @@ export default function Traffic() {
           <thead>
             <tr className="border-b" style={{ borderColor: "rgba(34,211,238,0.08)" }}>
               <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Project</th>
+              <th className="px-6 py-3 text-right text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Total Visits</th>
+              <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-mono" style={{ color: "rgba(34,211,238,0.6)" }}>Color</th>
             </tr>
           </thead>
           <tbody>
             {projects.length === 0 ? (
-              <tr><td className="px-6 py-8 text-center text-slate-500">No projects yet.</td></tr>
-            ) : projects.map((p) => (
-              <tr key={p.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-                <td className="px-6 py-3 text-slate-200 font-medium">{p.name}</td>
+              <tr>
+                <td colSpan={3} className="px-6 py-8 text-center text-slate-500">No projects yet.</td>
               </tr>
-            ))}
+            ) : projects.map((p, i) => {
+              const projectTotal = Object.values(visitsByProject[p.id] ?? {}).reduce((s, v) => s + v, 0);
+              return (
+                <tr key={p.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+                  <td className="px-6 py-3 text-slate-200 font-medium">{p.name}</td>
+                  <td className="px-6 py-3 text-right font-mono text-slate-300">{projectTotal.toLocaleString()}</td>
+                  <td className="px-6 py-3">
+                    <span
+                      className="inline-block w-3 h-3 rounded-full"
+                      style={{ background: PROJECT_COLORS[i % PROJECT_COLORS.length] }}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

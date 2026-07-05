@@ -213,6 +213,137 @@ export interface GithubRepo {
   language?: string | null;
 }
 
+export interface Project {
+  id: number;
+  name: string;
+  slug: string;
+  /** @nullable */
+  description?: string | null;
+  createdAt: string;
+}
+
+export interface ProjectList {
+  projects: Project[];
+}
+
+export interface ProjectMetric {
+  id: number;
+  projectId: number;
+  metricName: string;
+  value: string;
+  /** @nullable */
+  unit?: string | null;
+  recordedAt: string;
+}
+
+export interface ProjectMetricList {
+  metrics: ProjectMetric[];
+}
+
+/**
+ * @nullable
+ */
+export type ProjectEventMetadata = { [key: string]: unknown } | null;
+
+export interface ProjectEvent {
+  id: number;
+  projectId: number;
+  eventType: string;
+  message: string;
+  /** @nullable */
+  metadata?: ProjectEventMetadata;
+  occurredAt: string;
+}
+
+export interface ProjectEventList {
+  events: ProjectEvent[];
+}
+
+export interface AiConversation {
+  id: number;
+  projectId: number;
+  sessionId: string;
+  userMessage: string;
+  assistantMessage: string;
+  /** @nullable */
+  model?: string | null;
+  /** @nullable */
+  tokensUsed?: number | null;
+  startedAt: string;
+}
+
+export interface AiConversationList {
+  conversations: AiConversation[];
+}
+
+export interface WebsiteVisit {
+  id: number;
+  projectId: number;
+  pagePath: string;
+  /** @nullable */
+  referrer?: string | null;
+  /** @nullable */
+  userAgent?: string | null;
+  /** @nullable */
+  country?: string | null;
+  visitedAt: string;
+}
+
+export interface WebsiteVisitList {
+  visits: WebsiteVisit[];
+}
+
+export type OverviewStatsRecentEventsItem = { [key: string]: unknown };
+
+export type OverviewStatsProjectBreakdownItem = { [key: string]: unknown };
+
+export interface OverviewStats {
+  totalEvents: number;
+  totalMetrics: number;
+  totalConversations: number;
+  totalVisits: number;
+  recentEvents: OverviewStatsRecentEventsItem[];
+  projectBreakdown: OverviewStatsProjectBreakdownItem[];
+}
+
+export interface IngestOk {
+  ok: boolean;
+  id: number;
+}
+
+export type IngestEventBodyMetadata = { [key: string]: unknown };
+
+export interface IngestEventBody {
+  project_id: number;
+  event_type: string;
+  message: string;
+  metadata?: IngestEventBodyMetadata;
+}
+
+export interface IngestMetricBody {
+  project_id: number;
+  metric_name: string;
+  value: number;
+  unit?: string;
+}
+
+export interface IngestConversationBody {
+  project_id: number;
+  session_id: string;
+  user_message: string;
+  assistant_message: string;
+  model?: string;
+  tokens_used?: number;
+}
+
+export interface IngestWebsiteVisitBody {
+  project_id: number;
+  page_path: string;
+  referrer?: string;
+  user_agent?: string;
+  country?: string;
+}
+
 export interface GithubRepoList {
   repos: GithubRepo[];
   total: number;

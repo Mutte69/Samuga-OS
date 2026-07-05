@@ -289,6 +289,187 @@ export const ListReposResponse = zod.object({
 
 
 /**
+ * @summary List all projects ordered by name (session auth)
+ */
+export const ListProjectsResponse = zod.object({
+  "projects": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "description": zod.string().nullish(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Last 500 metric rows for a project (session auth)
+ */
+export const GetProjectMetricsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetProjectMetricsResponse = zod.object({
+  "metrics": zod.array(zod.object({
+  "id": zod.number(),
+  "projectId": zod.number(),
+  "metricName": zod.string(),
+  "value": zod.string(),
+  "unit": zod.string().nullish(),
+  "recordedAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Last 500 event rows for a project (session auth)
+ */
+export const GetProjectEventsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetProjectEventsResponse = zod.object({
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "projectId": zod.number(),
+  "eventType": zod.string(),
+  "message": zod.string(),
+  "metadata": zod.object({
+
+}).passthrough().nullish(),
+  "occurredAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Last 200 conversation rows for a project (session auth)
+ */
+export const GetProjectConversationsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetProjectConversationsResponse = zod.object({
+  "conversations": zod.array(zod.object({
+  "id": zod.number(),
+  "projectId": zod.number(),
+  "sessionId": zod.string(),
+  "userMessage": zod.string(),
+  "assistantMessage": zod.string(),
+  "model": zod.string().nullish(),
+  "tokensUsed": zod.number().nullish(),
+  "startedAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Last 500 website visit rows for a project (session auth)
+ */
+export const GetProjectVisitsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetProjectVisitsResponse = zod.object({
+  "visits": zod.array(zod.object({
+  "id": zod.number(),
+  "projectId": zod.number(),
+  "pagePath": zod.string(),
+  "referrer": zod.string().nullish(),
+  "userAgent": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "visitedAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Aggregate KPIs and recent activity across all projects (session auth)
+ */
+export const GetOverviewResponse = zod.object({
+  "totalEvents": zod.number(),
+  "totalMetrics": zod.number(),
+  "totalConversations": zod.number(),
+  "totalVisits": zod.number(),
+  "recentEvents": zod.array(zod.object({
+
+}).passthrough()),
+  "projectBreakdown": zod.array(zod.object({
+
+}).passthrough())
+})
+
+
+/**
+ * @summary Ingest a project event (Bearer INGEST_API_KEY)
+ */
+export const IngestEventBody = zod.object({
+  "project_id": zod.number(),
+  "event_type": zod.string(),
+  "message": zod.string(),
+  "metadata": zod.object({
+
+}).passthrough().optional()
+})
+
+export const IngestEventResponse = zod.object({
+  "ok": zod.boolean(),
+  "id": zod.number()
+})
+
+
+/**
+ * @summary Ingest a project metric (Bearer INGEST_API_KEY)
+ */
+export const IngestMetricBody = zod.object({
+  "project_id": zod.number(),
+  "metric_name": zod.string(),
+  "value": zod.number(),
+  "unit": zod.string().optional()
+})
+
+export const IngestMetricResponse = zod.object({
+  "ok": zod.boolean(),
+  "id": zod.number()
+})
+
+
+/**
+ * @summary Ingest an AI conversation (Bearer INGEST_API_KEY)
+ */
+export const IngestConversationBody = zod.object({
+  "project_id": zod.number(),
+  "session_id": zod.string(),
+  "user_message": zod.string(),
+  "assistant_message": zod.string(),
+  "model": zod.string().optional(),
+  "tokens_used": zod.number().optional()
+})
+
+export const IngestConversationResponse = zod.object({
+  "ok": zod.boolean(),
+  "id": zod.number()
+})
+
+
+/**
+ * @summary Ingest a website visit (Bearer INGEST_API_KEY)
+ */
+export const IngestWebsiteVisitBody = zod.object({
+  "project_id": zod.number(),
+  "page_path": zod.string(),
+  "referrer": zod.string().optional(),
+  "user_agent": zod.string().optional(),
+  "country": zod.string().optional()
+})
+
+export const IngestWebsiteVisitResponse = zod.object({
+  "ok": zod.boolean(),
+  "id": zod.number()
+})
+
+
+/**
  * @summary Analyze text using the AI engine (structured summary, smart reply, or classification)
  */
 export const AnalyzeTextBody = zod.object({

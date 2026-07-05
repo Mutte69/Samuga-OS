@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, projectsTable, projectMetricsTable, projectEventsTable, aiConversationsTable } from "@workspace/db";
+import { db, projectsTable, projectMetricsTable, projectEventsTable, aiConversationsTable, websiteVisitsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdminSession } from "../middlewares/session-auth";
 
@@ -47,6 +47,17 @@ router.get("/v1/projects/:id/conversations", requireAdminSession, async (req, re
     .where(eq(aiConversationsTable.projectId, id))
     .orderBy(desc(aiConversationsTable.startedAt)).limit(200);
   res.json({ conversations });
+});
+
+// GET /v1/projects/:id/visits — last 500 rows desc
+router.get("/v1/projects/:id/visits", requireAdminSession, async (req, res): Promise<void> => {
+  const id = parseParamId(req.params["id"]);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid project id" }); return; }
+  const visits = await db
+    .select().from(websiteVisitsTable)
+    .where(eq(websiteVisitsTable.projectId, id))
+    .orderBy(desc(websiteVisitsTable.visitedAt)).limit(500);
+  res.json({ visits });
 });
 
 export default router;
