@@ -4,14 +4,18 @@ import { requireAdminSession } from "../middlewares/session-auth";
 
 const router: IRouter = Router();
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME?.trim();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD?.trim();
 
 if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
   throw new Error(
     "ADMIN_USERNAME and ADMIN_PASSWORD environment variables are required. Set them in your environment secrets.",
   );
 }
+
+console.log(
+  `[auth] ADMIN_USERNAME loaded: length=${ADMIN_USERNAME.length}, first_char="${ADMIN_USERNAME[0]}"`,
+);
 
 router.post("/auth/login", async (req, res): Promise<void> => {
   const parsed = LoginBody.safeParse(req.body);
@@ -21,7 +25,14 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
 
   const { username, password } = parsed.data;
-  if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+  const usernameMatch = username.trim() === ADMIN_USERNAME;
+  const passwordMatch = password.trim() === ADMIN_PASSWORD;
+
+  console.log(
+    `[auth] login attempt: provided_username="${username.trim()}" username_match=${usernameMatch} password_match=${passwordMatch}`,
+  );
+
+  if (!usernameMatch || !passwordMatch) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
