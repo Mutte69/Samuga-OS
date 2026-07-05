@@ -35,13 +35,22 @@ app.use(
   }),
 );
 
-// CORS_ORIGIN: space-separated list of allowed origins (e.g.
-// "https://workspacesamuga-admin.up.railway.app").
-// Falls back to mirroring any origin (origin: true) for local dev.
+// CORS_ORIGIN: space-separated list of allowed origins
+// e.g. "https://workspacesamuga-admin.up.railway.app"
+// Required in production; falls back to mirroring any origin only in development.
 const rawCorsOrigin = process.env.CORS_ORIGIN?.trim();
+const isProduction = process.env.NODE_ENV === "production";
+
+if (isProduction && !rawCorsOrigin) {
+  throw new Error(
+    "CORS_ORIGIN environment variable is required in production. " +
+    "Set it to the admin frontend URL, e.g. https://workspacesamuga-admin.up.railway.app",
+  );
+}
+
 const corsOrigin: string | string[] | boolean = rawCorsOrigin
   ? rawCorsOrigin.split(/\s+/).filter(Boolean)
-  : true;
+  : true; // dev-only fallback: mirror any origin
 
 console.log("[cors] allowed origins:", corsOrigin);
 
