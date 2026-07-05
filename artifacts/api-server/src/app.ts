@@ -9,6 +9,12 @@ import { pool } from "@workspace/db";
 
 const app: Express = express();
 
+// Railway (and most PaaS providers) sit behind a reverse proxy.
+// Without this, req.secure is always false, so express-session refuses to
+// set Set-Cookie when cookie.secure: true — the session row is written to
+// Postgres but the browser never receives the cookie, breaking cross-origin auth.
+app.set("trust proxy", 1);
+
 app.use(
   pinoHttp({
     logger,
@@ -29,7 +35,17 @@ app.use(
   }),
 );
 
-app.use(cors({ origin: true, credentials: true }));
+// CORS_ORIGIN: space-separated list of allowed origins (e.g.
+// "https://workspacesamuga-admin.up.railway.app").
+// Falls back to mirroring any origin (origin: true) for local dev.
+const rawCorsOrigin = process.env.CORS_ORIGIN?.trim();
+const corsOrigin: string | string[] | boolean = rawCorsOrigin
+  ? rawCorsOrigin.split(/\s+/).filter(Boolean)
+  : true;
+
+console.log("[cors] allowed origins:", corsOrigin);
+
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
