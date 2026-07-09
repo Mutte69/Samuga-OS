@@ -79,7 +79,8 @@ const MUTE_OPTIONS = [
   { label: "15 min", ms: 15 * 60 * 1000 },
   { label: "30 min", ms: 30 * 60 * 1000 },
   { label: "1 hour", ms: 60 * 60 * 1000 },
-];
+  { label: "Custom…", ms: null },
+] as const;
 
 function useCountdown(muteUntil: Date | null): string {
   const [label, setLabel] = useState("");
@@ -107,7 +108,11 @@ function useCountdown(muteUntil: Date | null): string {
 function MuteControl() {
   const { isMuted, muteUntil, mute, unmute } = useLive();
   const [open, setOpen] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
+  const [customMinutes, setCustomMinutes] = useState("60");
+  const [customError, setCustomError] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
+  const customInputRef = useRef<HTMLInputElement>(null);
   const countdown = useCountdown(muteUntil);
 
   // Close dropdown on outside click
@@ -116,11 +121,32 @@ function MuteControl() {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setOpen(false);
+        setShowCustom(false);
+        setCustomError("");
       }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
+
+  // Focus the input when the custom panel opens
+  useEffect(() => {
+    if (showCustom) {
+      setTimeout(() => customInputRef.current?.focus(), 0);
+    }
+  }, [showCustom]);
+
+  function handleCustomApply() {
+    const mins = parseInt(customMinutes, 10);
+    if (isNaN(mins) || mins < 1 || mins > 480) {
+      setCustomError("Enter 1–480 min");
+      return;
+    }
+    mute(mins * 60 * 1000);
+    setOpen(false);
+    setShowCustom(false);
+    setCustomError("");
+  }
 
   if (isMuted) {
     return (
@@ -140,7 +166,7 @@ function MuteControl() {
   return (
     <div ref={menuRef} className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setOpen((v) => !v); setShowCustom(false); setCustomError(""); }}
         title="Mute live toasts"
         className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium
           bg-white/5 border border-white/10 text-sky-300/70
@@ -153,24 +179,69 @@ function MuteControl() {
 
       {open && (
         <div
-          className="absolute right-0 mt-1.5 w-36 rounded-lg overflow-hidden shadow-xl
+          className="absolute right-0 mt-1.5 rounded-lg overflow-hidden shadow-xl
             border border-white/10 bg-slate-900/95 backdrop-blur-sm z-50"
+          style={{ minWidth: showCustom ? "10rem" : "9rem" }}
         >
-          {MUTE_OPTIONS.map(({ label, ms }) => (
-            <button
-              key={ms}
-              onClick={() => { mute(ms); setOpen(false); }}
-              className="w-full text-left px-3 py-2 text-xs text-slate-200
-                hover:bg-white/10 transition-colors cursor-pointer"
-            >
-              Mute for {label}
-            </button>
-          ))}
-          <button
-            onClick={() => { mute(DEFAULT_MUTE_MS); setOpen(false); }}
-            className="hidden"
-            aria-hidden
-          />
+          {showCustom ? (
+            <div className="px-3 py-2.5 flex flex-col gap-2">
+              <p className="text-xs text-slate-300 font-medium">Custom duration</p>
+              <div className="flex items-center gap-1.5">
+                <input
+                  ref={customInputRef}
+                  type="number"
+                  min={1}
+                  max={480}
+                  value={customMinutes}
+                  onChange={(e) => { setCustomMinutes(e.target.value); setCustomError(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleCustomApply(); if (e.key === "Escape") { setShowCustom(false); setCustomError(""); } }}
+                  className="w-16 px-2 py-1 rounded text-xs bg-slate-800 border border-white/15
+                    text-slate-100 focus:outline-none focus:border-sky-500 [appearance:textfield]
+                    [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span className="text-xs text-slate-400">min</span>
+              </div>
+              {customError && <p className="text-xs text-red-400">{customError}</p>}
+              <div className="flex gap-1.5">
+                <button
+                  onClick={handleCustomApply}
+                  className="flex-1 px-2 py-1 rounded text-xs font-medium
+                    bg-sky-600 hover:bg-sky-500 text-white transition-colors cursor-pointer"
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={() => { setShowCustom(false); setCustomError(""); }}
+                  className="flex-1 px-2 py-1 rounded text-xs
+                    bg-white/5 hover:bg-white/10 text-slate-300 transition-colors cursor-pointer"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          ) : (
+            MUTE_OPTIONS.map(({ label, ms }) =>
+              ms === null ? (
+                <button
+                  key="custom"
+                  onClick={() => setShowCustom(true)}
+                  className="w-full text-left px-3 py-2 text-xs text-slate-400
+                    hover:bg-white/10 hover:text-slate-200 transition-colors cursor-pointer border-t border-white/5"
+                >
+                  Custom…
+                </button>
+              ) : (
+                <button
+                  key={ms}
+                  onClick={() => { mute(ms); setOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-xs text-slate-200
+                    hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  Mute for {label}
+                </button>
+              )
+            )
+          )}
         </div>
       )}
     </div>
