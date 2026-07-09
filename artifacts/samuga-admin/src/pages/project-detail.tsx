@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { useLive } from "@/context/LiveContext";
+import { apiFetch } from "@/lib/api-fetch";
 
 
 interface Project { id: number; name: string; slug: string; description: string | null; createdAt: string; }
@@ -21,7 +22,7 @@ function useProjectData<T>(projectId: string, resource: string) {
   return useQuery<T>({
     queryKey: ["project", projectId, resource],
     queryFn: async () => {
-      const res = await fetch(`/api/v1/projects/${projectId}/${resource}`, { credentials: "include" });
+      const res = await apiFetch(`/api/v1/projects/${projectId}/${resource}`);
       if (!res.ok) throw new Error(`Failed to fetch ${resource}`);
       return res.json();
     },
@@ -33,7 +34,7 @@ function useProjects() {
   return useQuery<{ projects: Project[] }>({
     queryKey: ["projects"],
     queryFn: async () => {
-      const res = await fetch(`/api/v1/projects`, { credentials: "include" });
+      const res = await apiFetch("/api/v1/projects");
       if (!res.ok) throw new Error("Failed to fetch projects");
       return res.json();
     },
