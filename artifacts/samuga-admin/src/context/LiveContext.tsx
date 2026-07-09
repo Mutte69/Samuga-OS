@@ -143,6 +143,9 @@ export function useLiveRateLimits() {
 const SSE_URL = `${API_BASE}/api/v1/live`;
 const INITIAL_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 30_000;
+// How long to wait for a heartbeat before treating the connection as dead.
+// The server sends one every 15 s; we allow 20 s to absorb network jitter.
+const HEARTBEAT_TIMEOUT_MS = 20_000;
 const BASE_TITLE = document.title || "Samuga Admin";
 
 // ── Favicon badge helpers ──────────────────────────────────────────────────
@@ -251,6 +254,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const esRef = useRef<EventSource | null>(null);
   const retryMsRef = useRef(INITIAL_RETRY_MS);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Unread error count while the tab is hidden
   const unreadErrorsRef = useRef(0);
@@ -331,16 +335,48 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     // Reset backoff whenever we (re)connect due to a fresh login
     retryMsRef.current = INITIAL_RETRY_MS;
 
+    function clearHeartbeatTimer() {
+      if (heartbeatTimerRef.current) {
+        clearTimeout(heartbeatTimerRef.current);
+        heartbeatTimerRef.current = null;
+      }
+    }
+
     function connect() {
       if (destroyed) return;
 
       const es = new EventSource(SSE_URL, { withCredentials: true });
       esRef.current = es;
 
+      // Arms (or re-arms) the missed-heartbeat watchdog.
+      // If the server goes silent for longer than HEARTBEAT_TIMEOUT_MS the
+      // connection is considered dead and we reconnect immediately — without
+      // waiting for the exponential back-off timer.
+      function resetHeartbeatTimer() {
+        clearHeartbeatTimer();
+        heartbeatTimerRef.current = setTimeout(() => {
+          if (destroyed) return;
+          // Close the stale connection and reconnect right away
+          es.close();
+          esRef.current = null;
+          setIsLive(false);
+          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+          retryMsRef.current = INITIAL_RETRY_MS; // restart backoff fresh
+          connect();
+        }, HEARTBEAT_TIMEOUT_MS);
+      }
+
       es.addEventListener("connected", () => {
         if (destroyed) return;
         setIsLive(true);
         retryMsRef.current = INITIAL_RETRY_MS; // reset backoff on success
+        resetHeartbeatTimer(); // start watching for heartbeats
+      });
+
+      // Reset the watchdog each time the server sends a heartbeat
+      es.addEventListener("heartbeat", () => {
+        if (destroyed) return;
+        resetHeartbeatTimer();
       });
 
       // Default message event — live events (event / metric types)
@@ -377,6 +413,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       });
 
       es.onerror = () => {
+        clearHeartbeatTimer(); // stop watchdog — we're already reconnecting
         es.close();
         esRef.current = null;
         setIsLive(false);
@@ -410,6 +447,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     return () => {
       destroyed = true;
       window.removeEventListener("online", handleOnline);
+      clearHeartbeatTimer();
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
       esRef.current?.close();

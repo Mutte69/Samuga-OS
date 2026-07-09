@@ -26,10 +26,17 @@ router.get("/v1/live", requireAdminSession, (req, res): void => {
   // Send an initial "connected" event so the client knows the stream is alive
   res.write(`event: connected\ndata: {}\n\n`);
 
-  // Heartbeat every 25 seconds to keep the connection alive through proxies
+  // Heartbeat every 15 seconds so the client can detect a server-side restart
+  // within one missed interval (~15 s) rather than waiting for the backoff timer.
+  // Named events are used because SSE comment lines are not exposed to the
+  // browser's EventSource API and cannot be detected by JavaScript.
   const heartbeat = setInterval(() => {
-    res.write(`: heartbeat\n\n`);
-  }, 25_000);
+    try {
+      res.write(`event: heartbeat\ndata: {}\n\n`);
+    } catch {
+      // client already disconnected
+    }
+  }, 15_000);
 
   function onLive(evt: LiveEvent) {
     try {
