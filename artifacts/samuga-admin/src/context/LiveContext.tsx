@@ -142,6 +142,97 @@ const INITIAL_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 30_000;
 const BASE_TITLE = document.title || "Samuga Admin";
 
+// ── Favicon badge helpers ──────────────────────────────────────────────────
+
+/** Cache the original favicon href so we can restore it on clear. */
+let originalFaviconHref: string | null = null;
+
+function getFaviconEl(): HTMLLinkElement | null {
+  return document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+}
+
+/**
+ * Draw a red circle badge (with count) over the current favicon.
+ * Falls back gracefully when Canvas or favicon manipulation is unsupported.
+ */
+function setFaviconBadge(count: number): void {
+  try {
+    const link = getFaviconEl();
+    if (!link) return;
+
+    // Snapshot the original href once
+    if (originalFaviconHref === null) {
+      originalFaviconHref = link.href;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const img = new Image();
+    // Allow cross-origin SVG favicon to load onto the canvas
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      ctx.clearRect(0, 0, 32, 32);
+      ctx.drawImage(img, 0, 0, 32, 32);
+
+      // Red badge circle in the bottom-right corner
+      const badgeR = 9;
+      const cx = 32 - badgeR;
+      const cy = 32 - badgeR;
+      ctx.beginPath();
+      ctx.arc(cx, cy, badgeR, 0, 2 * Math.PI);
+      ctx.fillStyle = "#ef4444";
+      ctx.fill();
+
+      // White count text
+      const label = count > 99 ? "99+" : String(count);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `bold ${label.length > 2 ? 7 : 9}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, cx, cy + 0.5);
+
+      link.href = canvas.toDataURL("image/png");
+    };
+    img.onerror = () => {
+      // If the favicon image fails to load (e.g. SVG CORS), draw a plain red dot
+      ctx.clearRect(0, 0, 32, 32);
+      const badgeR = 9;
+      const cx = 32 - badgeR;
+      const cy = 32 - badgeR;
+      ctx.beginPath();
+      ctx.arc(cx, cy, badgeR, 0, 2 * Math.PI);
+      ctx.fillStyle = "#ef4444";
+      ctx.fill();
+      const label = count > 99 ? "99+" : String(count);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `bold ${label.length > 2 ? 7 : 9}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, cx, cy + 0.5);
+      link.href = canvas.toDataURL("image/png");
+    };
+    img.src = originalFaviconHref;
+  } catch {
+    // Canvas or favicon manipulation not supported — silently ignore
+  }
+}
+
+/** Restore the favicon to the original icon and clear the badge. */
+function clearFaviconBadge(): void {
+  try {
+    if (originalFaviconHref === null) return;
+    const link = getFaviconEl();
+    if (!link) return;
+    link.href = originalFaviconHref;
+  } catch {
+    // ignore
+  }
+}
+
 export function LiveProvider({ children }: { children: ReactNode }) {
   const [isLive, setIsLive] = useState(false);
   const [muteUntil, setMuteUntil] = useState<Date | null>(null);
@@ -201,6 +292,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       if (!document.hidden) {
         unreadErrorsRef.current = 0;
         document.title = BASE_TITLE;
+        clearFaviconBadge();
       }
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -336,6 +428,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         unreadErrorsRef.current += 1;
         const count = unreadErrorsRef.current;
         document.title = `(${count}) ${BASE_TITLE}`;
+        setFaviconBadge(count);
         // Fire a browser notification; silently no-ops if permission denied
         fireNotification(`${projectName} error`, message);
       }
