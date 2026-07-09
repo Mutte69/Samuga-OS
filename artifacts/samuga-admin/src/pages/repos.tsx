@@ -1,4 +1,4 @@
-import { useListRepos } from "@workspace/api-client-react";
+import { useListRepos, type ErrorType, type ErrorResponse } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Clock,
   Code2,
+  AlertTriangle,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListReposQueryKey } from "@workspace/api-client-react";
@@ -42,9 +43,18 @@ function LanguageDot({ language }: { language: string | null | undefined }) {
 
 export default function Repos() {
   const queryClient = useQueryClient();
-  const { data, isLoading, isError, isFetching } = useListRepos({
-    query: { queryKey: getListReposQueryKey() },
+  const { data, isLoading, isError, isFetching, error } = useListRepos({
+    query: { queryKey: getListReposQueryKey(), retry: false },
   });
+
+  // Extract the human-readable error message from the API response.
+  // The server returns { error: "..." } with a specific reason (missing secrets,
+  // GitHub API error, etc.).  Fall back to a generic message only when the
+  // response body is unparseable.
+  const apiError = error as ErrorType<ErrorResponse> | null;
+  const serverMessage: string =
+    (apiError?.data as { error?: string } | undefined)?.error ??
+    "Failed to load repositories. Check that GITHUB_OWNER and GITHUB_TOKEN are set on the API server.";
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: getListReposQueryKey() });
@@ -106,12 +116,18 @@ export default function Repos() {
       {/* Error */}
       {isError && !isLoading && (
         <Card className="p-8 text-center border-destructive/30 bg-destructive/5">
-          <GitFork className="w-10 h-10 mx-auto mb-3 text-destructive/50" />
+          <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-destructive/60" />
           <p className="font-semibold text-destructive">Failed to load repositories</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Check that GITHUB_OWNER and GITHUB_TOKEN are set on the API server.
+          <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto leading-relaxed">
+            {serverMessage}
           </p>
+          {apiError?.response?.status && (
+            <p className="text-xs text-muted-foreground/60 mt-1 font-mono">
+              HTTP {apiError.response.status}
+            </p>
+          )}
           <Button variant="outline" size="sm" className="mt-4" onClick={handleRefresh}>
+            <RefreshCw className="w-3.5 h-3.5 mr-2" />
             Retry
           </Button>
         </Card>

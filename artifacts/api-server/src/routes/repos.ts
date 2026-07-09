@@ -19,10 +19,25 @@ router.get("/repos", requireAdminSession, async (_req, res): Promise<void> => {
   const GITHUB_TOKEN = process.env.GITHUB_TOKEN?.trim();
   const GITHUB_OWNER = process.env.GITHUB_OWNER?.trim();
 
+  // Diagnostic — presence only, never values.
+  logger.info(
+    {
+      GITHUB_TOKEN_set: !!GITHUB_TOKEN,
+      GITHUB_OWNER_set: !!GITHUB_OWNER,
+    },
+    "[repos] env check",
+  );
+
   if (!GITHUB_TOKEN && !GITHUB_OWNER) {
+    logger.error(
+      { GITHUB_TOKEN_set: false, GITHUB_OWNER_set: false },
+      "[repos] neither GITHUB_TOKEN nor GITHUB_OWNER is set — returning 503",
+    );
     res.status(503).json({
       error:
-        "GitHub not configured. Set GITHUB_TOKEN (recommended) or GITHUB_OWNER on the server.",
+        "GitHub credentials not configured. " +
+        "Add GITHUB_TOKEN (a Personal Access Token with 'repo' scope) " +
+        "and GITHUB_OWNER (your GitHub username) to Replit Secrets, then redeploy.",
     });
     return;
   }
@@ -38,8 +53,12 @@ router.get("/repos", requireAdminSession, async (_req, res): Promise<void> => {
   }
 
   logger.info(
-    { owner: GITHUB_OWNER ?? "(from token)", authenticated: !!GITHUB_TOKEN },
-    "Fetching GitHub repositories",
+    {
+      owner: GITHUB_OWNER ?? "(inferred from token)",
+      authenticated: !!GITHUB_TOKEN,
+      endpoint: GITHUB_TOKEN ? "/user/repos" : `/users/${GITHUB_OWNER}/repos`,
+    },
+    "[repos] fetching GitHub repositories",
   );
 
   let page = 1;
