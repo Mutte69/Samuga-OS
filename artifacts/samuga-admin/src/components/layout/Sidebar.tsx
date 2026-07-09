@@ -14,7 +14,8 @@ import {
   Settings2, 
   Key, 
   GitFork,
-  LogOut 
+  LogOut,
+  Loader2,
 } from "lucide-react";
 import samugaLogo from "@assets/SamugaNewsBot_Profile_1783224477392.png";
 import { Button } from "@/components/ui/button";
@@ -62,29 +63,53 @@ function NavItem({ href, label, icon: Icon, location }: { href: string; label: s
 }
 
 function LiveIndicator() {
-  const { isLive } = useLive();
-  return (
-    <div className="flex items-center gap-1.5" title={isLive ? "Live feed connected" : "Live feed disconnected"}>
-      <span
-        className="relative flex h-2 w-2"
-        aria-label={isLive ? "live" : "offline"}
-      >
-        {isLive && (
+  const { connectionState } = useLive();
+
+  if (connectionState === "connected") {
+    return (
+      <div className="flex items-center gap-1.5" title="Live feed connected" aria-label="live">
+        <span className="relative flex h-2 w-2">
           <span
             className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
             style={{ background: "#22d3ee" }}
           />
-        )}
+          <span
+            className="relative inline-flex rounded-full h-2 w-2"
+            style={{ background: "#22d3ee" }}
+          />
+        </span>
+        <span className="text-[9px] uppercase font-mono tracking-widest font-bold" style={{ color: "#22d3ee" }}>
+          LIVE
+        </span>
+      </div>
+    );
+  }
+
+  if (connectionState === "connecting") {
+    return (
+      <div className="flex items-center gap-1.5" title="Reconnecting to live feed…" aria-label="reconnecting">
+        <Loader2
+          className="animate-spin"
+          style={{ width: 10, height: 10, color: "#f59e0b" }}
+        />
+        <span className="text-[9px] uppercase font-mono tracking-widest font-bold" style={{ color: "#f59e0b" }}>
+          SYNC
+        </span>
+      </div>
+    );
+  }
+
+  // disconnected
+  return (
+    <div className="flex items-center gap-1.5" title="Live feed disconnected" aria-label="offline">
+      <span className="relative flex h-2 w-2">
         <span
           className="relative inline-flex rounded-full h-2 w-2"
-          style={{ background: isLive ? "#22d3ee" : "rgba(148,163,184,0.4)" }}
+          style={{ background: "rgba(148,163,184,0.4)" }}
         />
       </span>
-      <span
-        className="text-[9px] uppercase font-mono tracking-widest font-bold"
-        style={{ color: isLive ? "#22d3ee" : "rgba(148,163,184,0.4)" }}
-      >
-        {isLive ? "LIVE" : "OFF"}
+      <span className="text-[9px] uppercase font-mono tracking-widest font-bold" style={{ color: "rgba(148,163,184,0.4)" }}>
+        OFF
       </span>
     </div>
   );

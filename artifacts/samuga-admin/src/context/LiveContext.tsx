@@ -95,8 +95,13 @@ function fireNotification(title: string, body: string) {
   setTimeout(() => n.close(), 8_000);
 }
 
+/** Three-state connection model for the live SSE feed. */
+export type ConnectionState = "disconnected" | "connecting" | "connected";
+
 interface LiveContextValue {
   isLive: boolean;
+  /** Granular connection state: "disconnected" | "connecting" | "connected" */
+  connectionState: ConnectionState;
   isMuted: boolean;
   muteUntil: Date | null;
   /** Number of toasts suppressed since mute started. Resets when unmuted or mute expires. */
@@ -115,6 +120,7 @@ interface LiveContextValue {
 
 const LiveContext = createContext<LiveContextValue>({
   isLive: false,
+  connectionState: "disconnected",
   isMuted: false,
   muteUntil: null,
   suppressedCount: 0,
@@ -143,6 +149,8 @@ export function useLiveRateLimits() {
 const SSE_URL = `${API_BASE}/api/v1/live`;
 const INITIAL_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 30_000;
+/** After this many consecutive failed attempts the feed gives up and shows "disconnected". */
+const MAX_RETRIES = 10;
 // How long to wait for a heartbeat before treating the connection as dead.
 // The server sends one every 15 s; we allow 20 s to absorb network jitter.
 const HEARTBEAT_TIMEOUT_MS = 20_000;
@@ -240,7 +248,7 @@ function clearFaviconBadge(): void {
 }
 
 export function LiveProvider({ children }: { children: ReactNode }) {
-  const [isLive, setIsLive] = useState(false);
+  const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
   const [muteUntil, setMuteUntil] = useState<Date | null>(null);
   const [suppressedCount, setSuppressedCount] = useState(0);
   // Initialise from localStorage so the value is correct on first render
@@ -253,6 +261,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const rateLimitListenersRef = useRef<Set<RateLimitListener>>(new Set());
   const esRef = useRef<EventSource | null>(null);
   const retryMsRef = useRef(INITIAL_RETRY_MS);
+  const retryCountRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -266,6 +275,8 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   // Suppress unused variable warning — we only care about the auth flag
   void meData;
 
+  // Derive isLive for backward-compat consumers that only need a boolean
+  const isLive = connectionState === "connected";
   const isMuted = muteUntil !== null && muteUntil > new Date();
 
   const mute = useCallback((durationMs: number = DEFAULT_MUTE_MS) => {
@@ -320,7 +331,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       }
       esRef.current?.close();
       esRef.current = null;
-      setIsLive(false);
+      setConnectionState("disconnected");
       return;
     }
 
@@ -332,8 +343,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     });
 
     let destroyed = false;
-    // Reset backoff whenever we (re)connect due to a fresh login
+    // Reset backoff and retry count whenever we (re)connect due to a fresh login
     retryMsRef.current = INITIAL_RETRY_MS;
+    retryCountRef.current = 0;
 
     function clearHeartbeatTimer() {
       if (heartbeatTimerRef.current) {
@@ -344,6 +356,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
 
     function connect() {
       if (destroyed) return;
+      setConnectionState("connecting");
 
       const es = new EventSource(SSE_URL, { withCredentials: true });
       esRef.current = es;
@@ -359,16 +372,18 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           // Close the stale connection and reconnect right away
           es.close();
           esRef.current = null;
-          setIsLive(false);
+          setConnectionState("connecting");
           if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
           retryMsRef.current = INITIAL_RETRY_MS; // restart backoff fresh
+          retryCountRef.current = 0; // heartbeat loss counts as a fresh start
           connect();
         }, HEARTBEAT_TIMEOUT_MS);
       }
 
       es.addEventListener("connected", () => {
         if (destroyed) return;
-        setIsLive(true);
+        setConnectionState("connected");
+        retryCountRef.current = 0; // reset on successful connection
         retryMsRef.current = INITIAL_RETRY_MS; // reset backoff on success
         resetHeartbeatTimer(); // start watching for heartbeats
       });
@@ -416,12 +431,18 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         clearHeartbeatTimer(); // stop watchdog — we're already reconnecting
         es.close();
         esRef.current = null;
-        setIsLive(false);
         if (!destroyed) {
-          retryTimerRef.current = setTimeout(() => {
-            retryMsRef.current = Math.min(retryMsRef.current * 1.5, MAX_RETRY_MS);
-            connect();
-          }, retryMsRef.current);
+          retryCountRef.current += 1;
+          if (retryCountRef.current >= MAX_RETRIES) {
+            // Too many failed attempts — give up and show disconnected
+            setConnectionState("disconnected");
+          } else {
+            setConnectionState("connecting");
+            retryTimerRef.current = setTimeout(() => {
+              retryMsRef.current = Math.min(retryMsRef.current * 1.5, MAX_RETRY_MS);
+              connect();
+            }, retryMsRef.current);
+          }
         }
       };
     }
@@ -452,7 +473,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       retryTimerRef.current = null;
       esRef.current?.close();
       esRef.current = null;
-      setIsLive(false);
+      setConnectionState("disconnected");
     };
   }, [isAuthenticated]);
 
@@ -509,7 +530,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [subscribe, muteUntil]);
 
   return (
-    <LiveContext.Provider value={{ isLive, isMuted, muteUntil, suppressedCount, notificationsEnabled, subscribe, subscribeRateLimit, mute, unmute }}>
+    <LiveContext.Provider value={{ isLive, connectionState, isMuted, muteUntil, suppressedCount, notificationsEnabled, subscribe, subscribeRateLimit, mute, unmute }}>
       {children}
     </LiveContext.Provider>
   );
