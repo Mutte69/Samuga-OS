@@ -3,9 +3,27 @@ import { eq, sql } from "drizzle-orm";
 import { db, projectEventsTable, projectMetricsTable, aiConversationsTable, websiteVisitsTable, projectsTable } from "@workspace/db";
 import { requireIngestKey } from "../middleware/requireIngestKey";
 import { ingestRateLimit } from "../middleware/ingestRateLimit";
-import { eventBus } from "../lib/eventBus";
+import { eventBus, type IngestErrorEvent } from "../lib/eventBus";
 import { telemetry } from "../lib/telemetry";
 import geoip from "geoip-lite";
+
+/** Emit an ingest_error event to all SSE clients. */
+function emitIngestError(
+  endpoint: string,
+  status: number,
+  error: string,
+  extra?: Pick<IngestErrorEvent, "projectId" | "projectSlug">,
+): void {
+  const evt: IngestErrorEvent = {
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    endpoint,
+    error,
+    status,
+    timestamp: new Date().toISOString(),
+    ...extra,
+  };
+  eventBus.emit("ingest_error", evt);
+}
 
 /** Resolve a two-letter country code from a request IP, or return null. */
 function countryFromRequest(req: import("express").Request): string | null {
@@ -125,11 +143,17 @@ router.get("/ingest/project", requireIngestKey, async (req, res): Promise<void> 
 router.post("/ingest/event", requireIngestKey, async (req, res): Promise<void> => {
   const { project_id, project_slug, event_type, message, metadata } = req.body ?? {};
   if (typeof event_type !== "string" || typeof message !== "string") {
-    res.status(400).json({ error: "Required fields: (project_id or project_slug), event_type (string), message (string)" });
+    const errMsg = "Required fields: (project_id or project_slug), event_type (string), message (string)";
+    emitIngestError("/ingest/event", 400, errMsg);
+    res.status(400).json({ error: errMsg });
     return;
   }
   const resolved = await resolveProjectId(project_id, project_slug);
   if ("error" in resolved) {
+    emitIngestError("/ingest/event", resolved.status, resolved.error, {
+      projectId: typeof project_id === "number" ? project_id : undefined,
+      projectSlug: typeof project_slug === "string" ? project_slug : undefined,
+    });
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
@@ -143,6 +167,7 @@ router.post("/ingest/event", requireIngestKey, async (req, res): Promise<void> =
   } catch (err) {
     if (isForeignKeyViolation(err)) {
       telemetry.metric("failed_actions", 1, "count");
+      emitIngestError("/ingest/event", 404, "Project not found", { projectId: resolved.id });
       res.status(404).json({ error: "Project not found" });
       return;
     }
@@ -165,11 +190,17 @@ router.post("/ingest/event", requireIngestKey, async (req, res): Promise<void> =
 router.post("/ingest/metric", requireIngestKey, async (req, res): Promise<void> => {
   const { project_id, project_slug, metric_name, value, unit } = req.body ?? {};
   if (typeof metric_name !== "string" || value === undefined) {
-    res.status(400).json({ error: "Required fields: (project_id or project_slug), metric_name (string), value (number)" });
+    const errMsg = "Required fields: (project_id or project_slug), metric_name (string), value (number)";
+    emitIngestError("/ingest/metric", 400, errMsg);
+    res.status(400).json({ error: errMsg });
     return;
   }
   const resolved = await resolveProjectId(project_id, project_slug);
   if ("error" in resolved) {
+    emitIngestError("/ingest/metric", resolved.status, resolved.error, {
+      projectId: typeof project_id === "number" ? project_id : undefined,
+      projectSlug: typeof project_slug === "string" ? project_slug : undefined,
+    });
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
@@ -183,6 +214,7 @@ router.post("/ingest/metric", requireIngestKey, async (req, res): Promise<void> 
   } catch (err) {
     if (isForeignKeyViolation(err)) {
       telemetry.metric("failed_actions", 1, "count");
+      emitIngestError("/ingest/metric", 404, "Project not found", { projectId: resolved.id });
       res.status(404).json({ error: "Project not found" });
       return;
     }
@@ -209,11 +241,17 @@ router.post("/ingest/conversation", requireIngestKey, async (req, res): Promise<
     typeof user_message !== "string" ||
     typeof assistant_message !== "string"
   ) {
-    res.status(400).json({ error: "Required fields: (project_id or project_slug), session_id, user_message, assistant_message" });
+    const errMsg = "Required fields: (project_id or project_slug), session_id, user_message, assistant_message";
+    emitIngestError("/ingest/conversation", 400, errMsg);
+    res.status(400).json({ error: errMsg });
     return;
   }
   const resolved = await resolveProjectId(project_id, project_slug);
   if ("error" in resolved) {
+    emitIngestError("/ingest/conversation", resolved.status, resolved.error, {
+      projectId: typeof project_id === "number" ? project_id : undefined,
+      projectSlug: typeof project_slug === "string" ? project_slug : undefined,
+    });
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
@@ -234,6 +272,7 @@ router.post("/ingest/conversation", requireIngestKey, async (req, res): Promise<
   } catch (err) {
     if (isForeignKeyViolation(err)) {
       telemetry.metric("failed_actions", 1, "count");
+      emitIngestError("/ingest/conversation", 404, "Project not found", { projectId: resolved.id });
       res.status(404).json({ error: "Project not found" });
       return;
     }
@@ -255,11 +294,17 @@ router.post("/ingest/conversation", requireIngestKey, async (req, res): Promise<
 router.post("/ingest/website-visit", requireIngestKey, async (req, res): Promise<void> => {
   const { project_id, project_slug, page_path, referrer, user_agent, country } = req.body ?? {};
   if (typeof page_path !== "string") {
-    res.status(400).json({ error: "Required fields: (project_id or project_slug), page_path (string)" });
+    const errMsg = "Required fields: (project_id or project_slug), page_path (string)";
+    emitIngestError("/ingest/website-visit", 400, errMsg);
+    res.status(400).json({ error: errMsg });
     return;
   }
   const resolved = await resolveProjectId(project_id, project_slug);
   if ("error" in resolved) {
+    emitIngestError("/ingest/website-visit", resolved.status, resolved.error, {
+      projectId: typeof project_id === "number" ? project_id : undefined,
+      projectSlug: typeof project_slug === "string" ? project_slug : undefined,
+    });
     res.status(resolved.status).json({ error: resolved.error });
     return;
   }
@@ -286,6 +331,7 @@ router.post("/ingest/website-visit", requireIngestKey, async (req, res): Promise
   } catch (err) {
     if (isForeignKeyViolation(err)) {
       telemetry.metric("failed_actions", 1, "count");
+      emitIngestError("/ingest/website-visit", 404, "Project not found", { projectId: resolved.id });
       res.status(404).json({ error: "Project not found" });
       return;
     }

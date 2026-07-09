@@ -12,6 +12,17 @@ export interface RateLimitLiveEvent {
   data: RateLimitEvent;
 }
 
+/** Emitted by ingest routes when a call fails (4xx / 5xx). */
+export interface IngestErrorEvent {
+  id: string;
+  endpoint: string;
+  error: string;
+  status: number;
+  timestamp: string;
+  projectId?: number;
+  projectSlug?: string;
+}
+
 class LiveEventBus extends EventEmitter {}
 
 // Singleton shared across the process

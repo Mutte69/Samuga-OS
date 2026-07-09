@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requireAdminSession } from "../middlewares/session-auth";
-import { eventBus, type LiveEvent } from "../lib/eventBus";
+import { eventBus, type LiveEvent, type IngestErrorEvent } from "../lib/eventBus";
 import type { RateLimitEvent } from "../lib/rateLimitStore";
 import { logger } from "../lib/logger";
 import { telemetry } from "../lib/telemetry";
@@ -54,8 +54,17 @@ router.get("/v1/live", requireAdminSession, (req, res): void => {
     }
   }
 
+  function onIngestError(evt: IngestErrorEvent) {
+    try {
+      res.write(`event: ingest_error\ndata: ${JSON.stringify(evt)}\n\n`);
+    } catch {
+      // client disconnected between events
+    }
+  }
+
   eventBus.on("live", onLive);
   eventBus.on("rate_limit", onRateLimit);
+  eventBus.on("ingest_error", onIngestError);
 
   req.on("close", () => {
     clearInterval(heartbeat);
@@ -63,6 +72,7 @@ router.get("/v1/live", requireAdminSession, (req, res): void => {
     telemetry.metric("queue_size", activeConnections, "connections");
     eventBus.off("live", onLive);
     eventBus.off("rate_limit", onRateLimit);
+    eventBus.off("ingest_error", onIngestError);
     logger.debug("SSE client disconnected");
   });
 });

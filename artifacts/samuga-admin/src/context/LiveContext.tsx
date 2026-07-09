@@ -12,6 +12,16 @@ export interface RateLimitPayload {
   hitCount: number;
 }
 
+export interface IngestErrorPayload {
+  id: string;
+  endpoint: string;
+  error: string;
+  status: number;
+  timestamp: string;
+  projectId?: number;
+  projectSlug?: string;
+}
+
 export interface LivePayload {
   type: "event" | "metric";
   projectId: number;
@@ -20,6 +30,7 @@ export interface LivePayload {
 
 type Listener = (payload: LivePayload) => void;
 type RateLimitListener = (payload: RateLimitPayload) => void;
+type IngestErrorListener = (payload: IngestErrorPayload) => void;
 
 const MAX_TOASTS = 3;
 let activeToastCount = 0;
@@ -112,6 +123,8 @@ interface LiveContextValue {
   subscribe: (listener: Listener) => () => void;
   /** Subscribe to rate-limit events. Returns an unsubscribe function. */
   subscribeRateLimit: (listener: RateLimitListener) => () => void;
+  /** Subscribe to ingest error events. Returns an unsubscribe function. */
+  subscribeIngestError: (listener: IngestErrorListener) => () => void;
   /** Mute toasts for the given duration (default 5 min). */
   mute: (durationMs?: number) => void;
   /** Unmute immediately. */
@@ -127,6 +140,7 @@ const LiveContext = createContext<LiveContextValue>({
   notificationsEnabled: false,
   subscribe: () => () => {},
   subscribeRateLimit: () => () => {},
+  subscribeIngestError: () => () => {},
   mute: () => {},
   unmute: () => {},
 });
@@ -142,6 +156,15 @@ export function useLive() {
 export function useLiveRateLimits() {
   const { subscribeRateLimit } = useContext(LiveContext);
   return subscribeRateLimit;
+}
+
+/**
+ * Subscribe to real-time ingest error events from the SSE stream.
+ * Returns an unsubscribe function (call it in a useEffect cleanup).
+ */
+export function useLiveIngestErrors() {
+  const { subscribeIngestError } = useContext(LiveContext);
+  return subscribeIngestError;
 }
 
 // Use the same base as apiFetch so the SSE stream reaches the correct host
@@ -259,6 +282,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const muteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listenersRef = useRef<Set<Listener>>(new Set());
   const rateLimitListenersRef = useRef<Set<RateLimitListener>>(new Set());
+  const ingestErrorListenersRef = useRef<Set<IngestErrorListener>>(new Set());
   const esRef = useRef<EventSource | null>(null);
   const retryMsRef = useRef(INITIAL_RETRY_MS);
   const retryCountRef = useRef(0);
@@ -306,6 +330,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const subscribeRateLimit = useCallback((listener: RateLimitListener) => {
     rateLimitListenersRef.current.add(listener);
     return () => { rateLimitListenersRef.current.delete(listener); };
+  }, []);
+
+  const subscribeIngestError = useCallback((listener: IngestErrorListener) => {
+    ingestErrorListenersRef.current.add(listener);
+    return () => { ingestErrorListenersRef.current.delete(listener); };
   }, []);
 
   // Clear unread badge when the user returns to the tab
@@ -427,6 +456,27 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         }
       });
 
+      // Named "ingest_error" event from the server
+      es.addEventListener("ingest_error", (e) => {
+        if (destroyed) return;
+        try {
+          const payload = JSON.parse(e.data) as IngestErrorPayload;
+          ingestErrorListenersRef.current.forEach((fn) => fn(payload));
+
+          // Show a toast so operators notice even when not on the Overview page
+          if (activeToastCount < MAX_TOASTS) {
+            activeToastCount++;
+            const onDismiss = () => { activeToastCount = Math.max(0, activeToastCount - 1); };
+            toast.error(
+              `Ingest error (${payload.status}) on ${payload.endpoint}: ${payload.error}`,
+              { duration: 6000, onDismiss, onAutoClose: onDismiss },
+            );
+          }
+        } catch {
+          // malformed JSON — ignore
+        }
+      });
+
       es.onerror = () => {
         clearHeartbeatTimer(); // stop watchdog — we're already reconnecting
         es.close();
@@ -530,7 +580,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [subscribe, muteUntil]);
 
   return (
-    <LiveContext.Provider value={{ isLive, connectionState, isMuted, muteUntil, suppressedCount, notificationsEnabled, subscribe, subscribeRateLimit, mute, unmute }}>
+    <LiveContext.Provider value={{ isLive, connectionState, isMuted, muteUntil, suppressedCount, notificationsEnabled, subscribe, subscribeRateLimit, subscribeIngestError, mute, unmute }}>
       {children}
     </LiveContext.Provider>
   );

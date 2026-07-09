@@ -4,6 +4,7 @@ import { Activity, MessageSquare, Globe, Zap, AlertTriangle } from "lucide-react
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useLive } from "@/context/LiveContext";
 import { RateLimitPanel } from "@/components/RateLimitPanel";
+import { IngestErrorFeed } from "@/components/IngestErrorFeed";
 import { apiFetch } from "@/lib/api-fetch";
 
 interface OverviewStats {
@@ -139,6 +140,9 @@ export default function Overview() {
 
       {/* Rate-limit activity panel */}
       <RateLimitPanel />
+
+      {/* Ingest error live feed */}
+      <IngestErrorFeed />
 
       {/* Recent events table */}
       <div style={CARD_STYLE} className="rounded-xl">
