@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, projectEventsTable, projectMetricsTable, aiConversationsTable, websiteVisitsTable, projectsTable } from "@workspace/db";
 import { requireIngestKey } from "../middleware/requireIngestKey";
 import { ingestRateLimit } from "../middleware/ingestRateLimit";
@@ -66,13 +66,39 @@ function isForeignKeyViolation(err: unknown): boolean {
 }
 
 // ── GET /ingest/projects ────────────────────────────────────────────────────
-// Returns all projects so bots can enumerate available slugs.
-router.get("/ingest/projects", requireIngestKey, async (_req, res): Promise<void> => {
+// Returns paginated projects so bots can enumerate available slugs.
+// Query params: limit (default 100, max 500), offset (default 0)
+router.get("/ingest/projects", requireIngestKey, async (req, res): Promise<void> => {
+  const DEFAULT_LIMIT = 100;
+  const MAX_LIMIT = 500;
+
+  const rawLimit = parseInt(String(req.query.limit ?? DEFAULT_LIMIT), 10);
+  const rawOffset = parseInt(String(req.query.offset ?? 0), 10);
+
+  const limit = isNaN(rawLimit) || rawLimit < 1 ? DEFAULT_LIMIT : Math.min(rawLimit, MAX_LIMIT);
+  const offset = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset;
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(projectsTable);
+
   const projects = await db
     .select({ id: projectsTable.id, name: projectsTable.name, slug: projectsTable.slug })
     .from(projectsTable)
-    .orderBy(projectsTable.slug);
-  res.json(projects);
+    .orderBy(projectsTable.slug)
+    .limit(limit)
+    .offset(offset);
+
+  const nextOffset = offset + projects.length;
+  const hasMore = nextOffset < count;
+
+  res.json({
+    data: projects,
+    total: count,
+    limit,
+    offset,
+    next: hasMore ? nextOffset : null,
+  });
 });
 
 // ── GET /ingest/project?slug=<slug> ─────────────────────────────────────────
