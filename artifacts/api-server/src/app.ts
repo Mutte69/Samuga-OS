@@ -136,6 +136,23 @@ for (const ddl of coreTables) {
   }
 }
 
+// ── Rate-limit events table ──────────────────────────────────────────────────
+try {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "rate_limit_events" (
+      "id"          serial       PRIMARY KEY,
+      "ip"          text         NOT NULL,
+      "path"        text         NOT NULL,
+      "hit_count"   integer      NOT NULL,
+      "occurred_at" timestamptz  NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS "idx_rate_limit_events_occurred_at"
+      ON "rate_limit_events" ("occurred_at" DESC);
+  `);
+} catch (err) {
+  logger.warn({ err }, "Failed to create rate_limit_events table (non-fatal)");
+}
+
 // ── New project tables bootstrap ────────────────────────────────────────────
 const newTables = [
   `CREATE TABLE IF NOT EXISTS "projects" (
