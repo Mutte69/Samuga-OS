@@ -1,4 +1,4 @@
-import { useListRepos, type ErrorType, type ErrorResponse } from "@workspace/api-client-react";
+import { useListRepos } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,13 +47,13 @@ export default function Repos() {
     query: { queryKey: getListReposQueryKey(), retry: false },
   });
 
-  // Extract the human-readable error message from the API response.
-  // The server returns { error: "..." } with a specific reason (missing secrets,
-  // GitHub API error, etc.).  Fall back to a generic message only when the
-  // response body is unparseable.
-  const apiError = error as ErrorType<ErrorResponse> | null;
+  // Extract the most useful error message available:
+  //   1. Structured { error: "..." } payload from the API (most actionable)
+  //   2. error.message for network / parse failures ("Failed to fetch", etc.)
+  //   3. Generic fallback
   const serverMessage: string =
-    (apiError?.data as { error?: string } | undefined)?.error ??
+    error?.data?.error ??
+    (error instanceof Error ? error.message : null) ??
     "Failed to load repositories. Check that GITHUB_OWNER and GITHUB_TOKEN are set on the API server.";
 
   const handleRefresh = () => {
