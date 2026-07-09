@@ -11,6 +11,8 @@ const router: IRouter = Router();
  *
  * Query params:
  *   limit  (optional, default 50, max 200)
+ *   ip     (optional) — case-insensitive substring match on the IP field
+ *   path   (optional) — case-insensitive substring match on the path field
  */
 router.get("/v1/rate-limit-events", requireAdminSession, async (req, res): Promise<void> => {
   const rawLimit = req.query.limit;
@@ -18,7 +20,14 @@ router.get("/v1/rate-limit-events", requireAdminSession, async (req, res): Promi
     200,
     Math.max(1, Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : 50),
   );
-  const events = await getRecentRateLimitEvents(limit);
+
+  const ip   = typeof req.query.ip   === "string" ? req.query.ip.trim()   : undefined;
+  const path = typeof req.query.path === "string" ? req.query.path.trim() : undefined;
+
+  const events = await getRecentRateLimitEvents(limit, {
+    ip:   ip   || undefined,
+    path: path || undefined,
+  });
   res.json({ events, total: events.length });
 });
 

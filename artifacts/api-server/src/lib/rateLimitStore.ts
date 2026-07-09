@@ -50,9 +50,31 @@ export function recordRateLimitHit(ip: string, path: string, hitCount: number): 
   return evt;
 }
 
+export interface RateLimitEventFilter {
+  ip?: string;
+  path?: string;
+}
+
 /** Return recent events from the DB, newest first. Falls back to in-memory on error. */
-export async function getRecentRateLimitEvents(limit = 50): Promise<RateLimitEvent[]> {
+export async function getRecentRateLimitEvents(
+  limit = 50,
+  filter: RateLimitEventFilter = {},
+): Promise<RateLimitEvent[]> {
   try {
+    const conditions: string[] = [];
+    const params: unknown[] = [limit];
+
+    if (filter.ip) {
+      params.push(`%${filter.ip}%`);
+      conditions.push(`ip ILIKE ${params.length}`);
+    }
+    if (filter.path) {
+      params.push(`%${filter.path}%`);
+      conditions.push(`path ILIKE ${params.length}`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
     const { rows } = await pool.query<{
       id: number;
       ip: string;
@@ -62,9 +84,10 @@ export async function getRecentRateLimitEvents(limit = 50): Promise<RateLimitEve
     }>(
       `SELECT id, ip, path, hit_count, occurred_at
        FROM rate_limit_events
+       ${where}
        ORDER BY occurred_at DESC
        LIMIT $1`,
-      [limit],
+      params,
     );
 
     return rows.map((row) => ({
@@ -76,6 +99,16 @@ export async function getRecentRateLimitEvents(limit = 50): Promise<RateLimitEve
     }));
   } catch (err) {
     logger.warn({ err }, "DB read for rate-limit events failed, falling back to in-memory");
-    return events.slice(-limit).reverse();
+    const ipQ   = filter.ip?.toLowerCase();
+    const pathQ = filter.path?.toLowerCase();
+    return events
+      .slice()
+      .reverse()
+      .filter((e) => {
+        if (ipQ   && !e.ip.toLowerCase().includes(ipQ))     return false;
+        if (pathQ && !e.path.toLowerCase().includes(pathQ)) return false;
+        return true;
+      })
+      .slice(0, limit);
   }
 }
