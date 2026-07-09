@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import type { RateLimitEvent } from "./rateLimitStore";
+import type { RateLimitEvent, RateLimitSpikeEvent } from "./rateLimitStore";
 
 export interface LiveEvent {
   type: "event" | "metric" | "rate_limit";
@@ -10,6 +10,11 @@ export interface LiveEvent {
 export interface RateLimitLiveEvent {
   type: "rate_limit";
   data: RateLimitEvent;
+}
+
+export interface RateLimitSpikeLiveEvent {
+  type: "rate_limit_spike";
+  data: RateLimitSpikeEvent;
 }
 
 /** Emitted by ingest routes when a call fails (4xx / 5xx). */

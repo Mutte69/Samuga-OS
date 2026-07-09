@@ -22,6 +22,15 @@ export interface IngestErrorPayload {
   projectSlug?: string;
 }
 
+export interface RateLimitSpikePayload {
+  ip: string;
+  hitCount: number;
+  windowMs: number;
+  threshold: number;
+  timestamp: string;
+}
+
+
 export interface LivePayload {
   type: "event" | "metric";
   projectId: number;
@@ -31,6 +40,7 @@ export interface LivePayload {
 type Listener = (payload: LivePayload) => void;
 type RateLimitListener = (payload: RateLimitPayload) => void;
 type IngestErrorListener = (payload: IngestErrorPayload) => void;
+type RateLimitSpikeListener = (payload: RateLimitSpikePayload) => void;
 
 const MAX_TOASTS = 3;
 let activeToastCount = 0;
@@ -125,6 +135,8 @@ interface LiveContextValue {
   subscribeRateLimit: (listener: RateLimitListener) => () => void;
   /** Subscribe to ingest error events. Returns an unsubscribe function. */
   subscribeIngestError: (listener: IngestErrorListener) => () => void;
+  /** Subscribe to rate-limit spike alerts. Returns an unsubscribe function. */
+  subscribeRateLimitSpike: (listener: RateLimitSpikeListener) => () => void;
   /** Mute toasts for the given duration (default 5 min). */
   mute: (durationMs?: number) => void;
   /** Unmute immediately. */
@@ -141,6 +153,7 @@ const LiveContext = createContext<LiveContextValue>({
   subscribe: () => () => {},
   subscribeRateLimit: () => () => {},
   subscribeIngestError: () => () => {},
+  subscribeRateLimitSpike: () => () => {},
   mute: () => {},
   unmute: () => {},
 });
@@ -165,6 +178,17 @@ export function useLiveRateLimits() {
 export function useLiveIngestErrors() {
   const { subscribeIngestError } = useContext(LiveContext);
   return subscribeIngestError;
+}
+
+/**
+ * Subscribe to rate-limit spike alerts from the SSE stream.
+ * A spike fires once when a single IP crosses the configured hit threshold
+ * within the rolling window (default: 5 hits in 60 s).
+ * Returns an unsubscribe function (call it in a useEffect cleanup).
+ */
+export function useLiveRateLimitSpike() {
+  const { subscribeRateLimitSpike } = useContext(LiveContext);
+  return subscribeRateLimitSpike;
 }
 
 // Use the same base as apiFetch so the SSE stream reaches the correct host
@@ -283,6 +307,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const listenersRef = useRef<Set<Listener>>(new Set());
   const rateLimitListenersRef = useRef<Set<RateLimitListener>>(new Set());
   const ingestErrorListenersRef = useRef<Set<IngestErrorListener>>(new Set());
+  const rateLimitSpikeListenersRef = useRef<Set<RateLimitSpikeListener>>(new Set());
   const esRef = useRef<EventSource | null>(null);
   const retryMsRef = useRef(INITIAL_RETRY_MS);
   const retryCountRef = useRef(0);
@@ -335,6 +360,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const subscribeIngestError = useCallback((listener: IngestErrorListener) => {
     ingestErrorListenersRef.current.add(listener);
     return () => { ingestErrorListenersRef.current.delete(listener); };
+  }, []);
+
+  const subscribeRateLimitSpike = useCallback((listener: RateLimitSpikeListener) => {
+    rateLimitSpikeListenersRef.current.add(listener);
+    return () => { rateLimitSpikeListenersRef.current.delete(listener); };
   }, []);
 
   // Clear unread badge when the user returns to the tab
@@ -477,6 +507,29 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         }
       });
 
+      // Named "rate_limit_spike" event — a single IP crossed the hit threshold
+      es.addEventListener("rate_limit_spike", (e) => {
+        if (destroyed) return;
+        try {
+          const payload = JSON.parse(e.data) as RateLimitSpikePayload;
+          rateLimitSpikeListenersRef.current.forEach((fn) => fn(payload));
+
+          // Spike alerts are high-signal: show a persistent, distinctive toast
+          // that stays until the operator dismisses it (Infinity duration).
+          const windowSec = Math.round(payload.windowMs / 1000);
+          toast.error(
+            `⚠ Rate-limit spike: ${payload.ip} hit the limit ${payload.hitCount}× in ${windowSec}s`,
+            {
+              id: `spike-${payload.ip}`, // deduplicate rapid re-firings for the same IP
+              duration: Infinity,
+              closeButton: true,
+            },
+          );
+        } catch {
+          // malformed JSON — ignore
+        }
+      });
+
       es.onerror = () => {
         clearHeartbeatTimer(); // stop watchdog — we're already reconnecting
         es.close();
@@ -580,7 +633,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [subscribe, muteUntil]);
 
   return (
-    <LiveContext.Provider value={{ isLive, connectionState, isMuted, muteUntil, suppressedCount, notificationsEnabled, subscribe, subscribeRateLimit, subscribeIngestError, mute, unmute }}>
+    <LiveContext.Provider value={{ isLive, connectionState, isMuted, muteUntil, suppressedCount, notificationsEnabled, subscribe, subscribeRateLimit, subscribeIngestError, subscribeRateLimitSpike, mute, unmute }}>
       {children}
     </LiveContext.Provider>
   );

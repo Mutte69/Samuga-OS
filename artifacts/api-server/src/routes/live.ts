@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { requireAdminSession } from "../middlewares/session-auth";
 import { eventBus, type LiveEvent, type IngestErrorEvent } from "../lib/eventBus";
-import type { RateLimitEvent } from "../lib/rateLimitStore";
+import type { RateLimitEvent, RateLimitSpikeEvent } from "../lib/rateLimitStore";
 import { logger } from "../lib/logger";
 import { telemetry } from "../lib/telemetry";
 
@@ -62,9 +62,18 @@ router.get("/v1/live", requireAdminSession, (req, res): void => {
     }
   }
 
+  function onRateLimitSpike(evt: { type: "rate_limit_spike"; data: RateLimitSpikeEvent }) {
+    try {
+      res.write(`event: rate_limit_spike\ndata: ${JSON.stringify(evt.data)}\n\n`);
+    } catch {
+      // client disconnected between events
+    }
+  }
+
   eventBus.on("live", onLive);
   eventBus.on("rate_limit", onRateLimit);
   eventBus.on("ingest_error", onIngestError);
+  eventBus.on("rate_limit_spike", onRateLimitSpike);
 
   req.on("close", () => {
     clearInterval(heartbeat);
@@ -73,6 +82,7 @@ router.get("/v1/live", requireAdminSession, (req, res): void => {
     eventBus.off("live", onLive);
     eventBus.off("rate_limit", onRateLimit);
     eventBus.off("ingest_error", onIngestError);
+    eventBus.off("rate_limit_spike", onRateLimitSpike);
     logger.debug("SSE client disconnected");
   });
 });

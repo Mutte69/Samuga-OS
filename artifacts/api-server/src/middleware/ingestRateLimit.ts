@@ -1,7 +1,7 @@
 import rateLimit from "express-rate-limit";
 import type { Request, Response } from "express";
 import { eventBus } from "../lib/eventBus";
-import { recordRateLimitHit } from "../lib/rateLimitStore";
+import { recordRateLimitHit, checkRateLimitSpike } from "../lib/rateLimitStore";
 
 /**
  * Per-key rate limiter for all /api/ingest/* routes.
@@ -97,6 +97,13 @@ export function createIngestRateLimiter(opts: {
         // Record in the ring buffer and emit to SSE clients
         const evt = recordRateLimitHit(displayKey, path, hitCount);
         eventBus.emit("rate_limit", { type: "rate_limit", data: evt });
+
+        // Check if this IP has crossed the spike threshold and emit a spike
+        // alert when it does (fires exactly once per threshold crossing).
+        const spike = checkRateLimitSpike(displayKey);
+        if (spike) {
+          eventBus.emit("rate_limit_spike", { type: "rate_limit_spike", data: spike });
+        }
       }
 
       res.status(429).json({
