@@ -106,7 +106,7 @@ function useCountdown(muteUntil: Date | null): string {
 }
 
 function MuteControl() {
-  const { isMuted, muteUntil, mute, unmute } = useLive();
+  const { isMuted, muteUntil, suppressedCount, mute, unmute } = useLive();
   const [open, setOpen] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
   const [customMinutes, setCustomMinutes] = useState("60");
@@ -158,7 +158,16 @@ function MuteControl() {
           hover:bg-amber-500/30 transition-colors cursor-pointer select-none"
       >
         <BellOff className="w-3.5 h-3.5" />
-        <span>Muted {countdown && `· ${countdown}`}</span>
+        <span>
+          Muted{countdown && ` · ${countdown}`}
+          {suppressedCount > 0 && (
+            <span className="ml-1.5 inline-flex items-center justify-center
+              min-w-[1.1rem] h-[1.1rem] rounded-full bg-amber-400 text-amber-950
+              text-[10px] font-bold leading-none px-1">
+              {suppressedCount > 99 ? "99+" : suppressedCount}
+            </span>
+          )}
+        </span>
       </button>
     );
   }

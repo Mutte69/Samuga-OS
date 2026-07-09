@@ -99,6 +99,8 @@ interface LiveContextValue {
   isLive: boolean;
   isMuted: boolean;
   muteUntil: Date | null;
+  /** Number of toasts suppressed since mute started. Resets when unmuted or mute expires. */
+  suppressedCount: number;
   /** Whether the operator has granted browser notification permission. */
   notificationsEnabled: boolean;
   /** Subscribe to live payloads. Returns an unsubscribe function. */
@@ -115,6 +117,7 @@ const LiveContext = createContext<LiveContextValue>({
   isLive: false,
   isMuted: false,
   muteUntil: null,
+  suppressedCount: 0,
   notificationsEnabled: false,
   subscribe: () => () => {},
   subscribeRateLimit: () => () => {},
@@ -236,6 +239,7 @@ function clearFaviconBadge(): void {
 export function LiveProvider({ children }: { children: ReactNode }) {
   const [isLive, setIsLive] = useState(false);
   const [muteUntil, setMuteUntil] = useState<Date | null>(null);
+  const [suppressedCount, setSuppressedCount] = useState(0);
   // Initialise from localStorage so the value is correct on first render
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
     () => readStoredNotificationPref() === "granted",
@@ -264,8 +268,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     if (muteTimerRef.current) clearTimeout(muteTimerRef.current);
     const until = new Date(Date.now() + durationMs);
     setMuteUntil(until);
+    setSuppressedCount(0);
     muteTimerRef.current = setTimeout(() => {
       setMuteUntil(null);
+      setSuppressedCount(0);
       muteTimerRef.current = null;
     }, durationMs);
   }, []);
@@ -274,6 +280,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     if (muteTimerRef.current) clearTimeout(muteTimerRef.current);
     muteTimerRef.current = null;
     setMuteUntil(null);
+    setSuppressedCount(0);
   }, []);
 
   const subscribe = useCallback((listener: Listener) => {
@@ -434,7 +441,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       }
 
       // ── Toasts — suppressed while muted ──
-      if (muteUntil !== null && muteUntil > new Date()) return;
+      if (muteUntil !== null && muteUntil > new Date()) {
+        setSuppressedCount((c) => c + 1);
+        return;
+      }
 
       if (activeToastCount >= MAX_TOASTS) return;
 
@@ -461,7 +471,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [subscribe, muteUntil]);
 
   return (
-    <LiveContext.Provider value={{ isLive, isMuted, muteUntil, notificationsEnabled, subscribe, subscribeRateLimit, mute, unmute }}>
+    <LiveContext.Provider value={{ isLive, isMuted, muteUntil, suppressedCount, notificationsEnabled, subscribe, subscribeRateLimit, mute, unmute }}>
       {children}
     </LiveContext.Provider>
   );
