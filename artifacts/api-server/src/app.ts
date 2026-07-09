@@ -10,11 +10,12 @@ import { pool } from "@workspace/db";
 
 const app: Express = express();
 
-// Railway (and most PaaS providers) sit behind a reverse proxy.
-// Without this, req.secure is always false, so express-session refuses to
-// set Set-Cookie when cookie.secure: true — the session row is written to
-// Postgres but the browser never receives the cookie, breaking cross-origin auth.
-app.set("trust proxy", 1);
+// Trust ALL upstream proxy hops (Replit CDN, Railway, Cloudflare, etc.).
+// This ensures req.secure = true for HTTPS requests regardless of chain depth,
+// which is required for express-session to set the Set-Cookie header when
+// cookie.secure: true.  Safe because our app is always deployed behind a
+// managed PaaS proxy — it is never directly exposed to the internet.
+app.set("trust proxy", true);
 
 app.use(
   pinoHttp({
@@ -43,19 +44,32 @@ const rawCorsOrigin = process.env.CORS_ORIGIN?.trim();
 const isProduction = process.env.NODE_ENV === "production";
 
 if (isProduction && !rawCorsOrigin) {
-  throw new Error(
-    "CORS_ORIGIN environment variable is required in production. " +
-    "Set it to the admin frontend URL, e.g. https://workspacesamuga-admin.up.railway.app",
+  // On Replit both the frontend and API are served at the same domain so
+  // CORS is not needed — this is not an error.  On Railway (cross-origin),
+  // set CORS_ORIGIN to the frontend URL.
+  logger.warn(
+    "CORS_ORIGIN is not set — using open CORS (all origins). " +
+    "Set CORS_ORIGIN to your frontend URL if running cross-origin (e.g. on Railway).",
   );
 }
 
-const corsOrigin: string | string[] | boolean = rawCorsOrigin
-  ? rawCorsOrigin.split(/\s+/).filter(Boolean)
-  : true; // dev-only fallback: mirror any origin
+const corsOrigins = rawCorsOrigin ? rawCorsOrigin.split(/\s+/).filter(Boolean) : [];
+const isCrossOrigin = corsOrigins.length > 0;
 
-console.log("[cors] allowed origins:", corsOrigin);
+// Cross-origin (Railway / separate domains): allow specific origins + send credentials.
+// Same-origin (Replit / shared domain): CORS middleware just passes through;
+//   browsers don't enforce CORS for same-origin requests so no credentials header needed.
+//   We explicitly set origin: false so we never reflect arbitrary origins with credentials.
+const corsOptions = isCrossOrigin
+  ? { origin: corsOrigins, credentials: true }
+  : { origin: false };
 
-app.use(cors({ origin: corsOrigin, credentials: true }));
+logger.info(
+  { mode: isCrossOrigin ? "cross-origin" : "same-origin", allowedOrigins: corsOrigins },
+  "[cors] configuration",
+);
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -216,11 +230,16 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      // In production the admin frontend is on a different origin (cross-site),
-      // so we need SameSite=None + Secure so the browser will include the cookie
-      // in cross-origin requests made with credentials: 'include'.
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      // SameSite=None is required only for CROSS-ORIGIN setups (e.g. Railway where
+      // the admin frontend and API server are on different domains).
+      // On Replit both are served at the same domain, so SameSite=Lax is correct
+      // and avoids the strict "Secure required" enforcement that SameSite=None imposes.
+      //
+      // We detect cross-origin by whether CORS_ORIGIN is explicitly configured:
+      //   - CORS_ORIGIN set  → cross-origin Railway setup → SameSite=None + Secure
+      //   - CORS_ORIGIN unset → same-origin Replit setup  → SameSite=Lax
+      secure: isCrossOrigin ? true : isProduction,
+      sameSite: isCrossOrigin ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
   }),
