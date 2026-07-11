@@ -1,0 +1,49 @@
+Paste this into Replit Agent:
+
+> The production Data Master Hub dashboard loads correctly, but every data section shows zero:
+>
+> * Total Events: 0
+> * Metrics Recorded: 0
+> * AI Conversations: 0
+> * Website Visits: 0
+> * Events by Project: empty
+>
+> Do not redesign the UI. Diagnose and fix the complete production data flow from ingestion to database to dashboard.
+>
+> Check these areas carefully:
+>
+> 1. Confirm the deployed API server and admin dashboard are connected to the correct production PostgreSQL database.
+> 2. Print safe startup diagnostics showing which database host/database name is being used, without exposing passwords or secrets.
+> 3. Query the production database directly and report row counts for all relevant tables, including events, metrics, AI conversations, website visits, projects, system logs, and rate-limit events.
+> 4. Verify whether the database contains data but the dashboard API is returning empty results.
+> 5. Test every dashboard endpoint used by the Overview page and report its actual HTTP status and response body.
+> 6. Check whether `VITE_API_BASE_URL`, `CORS_ORIGIN`, cookies, authentication, proxy settings, and production API URLs point to the correct deployed services.
+> 7. Check whether the frontend silently converts API errors into zero values. API failures must display a visible error instead of showing fake zeros.
+> 8. Verify the ingest endpoints:
+>
+>    * `POST /api/ingest/event`
+>    * `POST /api/ingest/metric`
+>    * `POST /api/ingest/website-visit`
+>    * the AI conversation ingest endpoint
+> 9. Confirm the ingest authentication key is accepted and that project slug or project ID lookup works.
+> 10. Send one controlled test record into each ingest endpoint in production, then confirm:
+>
+>     * the endpoint returns success,
+>     * the row exists in PostgreSQL,
+>     * the corresponding GET/dashboard API returns it,
+>     * the dashboard count changes from zero after refresh.
+> 11. Check whether existing Samuga apps are still sending telemetry to an old Replit URL, an incorrect route, or a different database.
+> 12. Search the production logs for 401, 403, 404, 500, CORS, database, missing project, invalid ingest key, and connection errors.
+>
+> Fix only the actual root cause. Do not add mock data, hardcoded counts, or temporary frontend values.
+>
+> Before saying the task is completed, provide:
+>
+> * the exact root cause,
+> * the affected files,
+> * the database row counts before and after testing,
+> * the tested production endpoint URLs,
+> * the HTTP results,
+> * confirmation that real test data is visible on the production Overview page.
+>
+> Commit and push the fix to the connected GitHub `main` branch. Do not claim success merely because the application builds; prove that production data is stored and displayed.
